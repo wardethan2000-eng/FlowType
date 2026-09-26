@@ -551,6 +551,10 @@ share and nobody else's usage lands on your bill.
   on-phone transcription, spoken commands, dictionary, cleanup in the "notes"
   style when it's on, other audio paused.
 - **Notes screen**: newest first, search, copy, delete. Kept until deleted.
+- **Titles**: each note is saved at once with its first words as a title,
+  then the cleanup model writes a 2–6 word title (one small request,
+  `store: false`, guarded; no key or anything odd keeps the first words).
+  Send to Keep passes it as the Keep note's title.
 - **Google Keep**: Keep's API covers Workspace accounts only, so nothing can
   write to a personal Keep silently. Each note has **Send to Keep**, which
   opens Keep's own share card filled in; one tap saves it (Ethan's choice

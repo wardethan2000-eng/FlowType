@@ -14,6 +14,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.ethanward.flowtype.Prefs
+import com.ethanward.flowtype.cleanup.NoteTitler
 import com.ethanward.flowtype.notes.Note
 import com.ethanward.flowtype.notes.NotesStore
 import com.ethanward.flowtype.service.DictationService
@@ -66,10 +67,24 @@ class NotesActivity : AppCompatActivity() {
         }
     }
 
+    // The AI title lands a moment after a note is saved: refresh while it's on screen.
+    private val poll = object : Runnable {
+        override fun run() {
+            render()
+            list.postDelayed(this, 3000)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         showStatus()
         render()
+        list.postDelayed(poll, 3000)
+    }
+
+    override fun onPause() {
+        list.removeCallbacks(poll)
+        super.onPause()
     }
 
     private fun showStatus() {
@@ -90,7 +105,9 @@ class NotesActivity : AppCompatActivity() {
     private fun render() {
         list.removeAllViews()
         val q = search.text?.toString()?.trim().orEmpty()
-        val notes = store.list().filter { q.isEmpty() || it.text.contains(q, ignoreCase = true) }
+        val notes = store.list().filter {
+            q.isEmpty() || it.text.contains(q, ignoreCase = true) || it.title.contains(q, ignoreCase = true)
+        }
         if (notes.isEmpty()) {
             list.text(if (q.isEmpty()) "No notes yet." else "Nothing matches.", secondary = true)
                 .setPadding(dp(4), dp(12), dp(4), dp(12))
@@ -99,21 +116,25 @@ class NotesActivity : AppCompatActivity() {
     }
 
     private fun LinearLayout.note(n: Note) = card {
+        heading(n.title.ifEmpty { NoteTitler.fallback(n.text) })
         text(DateUtils.getRelativeTimeSpanString(n.at, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString(), secondary = true)
         text(n.text).apply {
             setTextIsSelectable(true)
             textSize = 16f
         }
         row {
-            button("Send to Keep", ButtonKind.TONAL) { sendToKeep(n.text) }
+            button("Send to Keep", ButtonKind.TONAL) { sendToKeep(n.title.ifEmpty { NoteTitler.fallback(n.text) }, n.text) }
             button("Copy", ButtonKind.TEXT) { copy(n.text) }
             button("Delete", ButtonKind.TEXT) { confirmDelete(n) }
         }
     }
 
     /** Keep's own share card, filled in; one tap on Save there. Any app if Keep isn't installed. */
-    private fun sendToKeep(text: String) {
-        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+    private fun sendToKeep(title: String, text: String) {
+        // Keep takes the subject as the note's title.
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+            .putExtra(Intent.EXTRA_SUBJECT, title)
+            .putExtra(Intent.EXTRA_TEXT, text)
         val keep = Intent(send).setPackage(KEEP)
         if (keep.resolveActivity(packageManager) != null) startActivity(keep)
         else startActivity(Intent.createChooser(send, "Send note"))

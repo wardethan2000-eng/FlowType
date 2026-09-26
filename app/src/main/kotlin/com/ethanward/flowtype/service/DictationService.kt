@@ -42,6 +42,7 @@ import com.ethanward.flowtype.cleanup.ApiKeyStore
 import com.ethanward.flowtype.cleanup.AppStyle
 import com.ethanward.flowtype.cleanup.Cleaner
 import com.ethanward.flowtype.cleanup.CleanupConfig
+import com.ethanward.flowtype.cleanup.NoteTitler
 import com.ethanward.flowtype.dictionary.DictionaryPass
 import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.ethanward.flowtype.history.HistoryEntry
@@ -81,6 +82,7 @@ class DictationService : AccessibilityService() {
     private lateinit var cleaner: Cleaner
     private lateinit var otherAudio: OtherAudio
     private lateinit var notes: NotesStore
+    private val titler by lazy { NoteTitler(keys) }
     private val net = Executors.newSingleThreadExecutor { Thread(it, "flowtype-cleanup") }
     private lateinit var windowManager: WindowManager
 
@@ -279,11 +281,17 @@ class DictationService : AccessibilityService() {
                 return@execute
             }
             val save = { text: String, cleanup: String ->
-                notes.add(text, local)
+                // Saved at once with its first words as the title; the AI title follows.
+                val note = notes.add(text, local, NoteTitler.fallback(text))
                 Trace.event("note_saved", "audioMs" to pcm.size / 16, "chars" to text.length, "cleanup" to cleanup)
                 main.post {
                     removeNoteOverlay()
                     toast("Note saved in Flowtype")
+                }
+                if (prefs.cleanupEnabled && keys.has()) net.execute {
+                    val title = titler.title(text, CleanupConfig.byId(prefs.cleanupModel))
+                    if (title != null) notes.setTitle(note.id, title)
+                    Trace.event("note_titled", "ai" to (title != null), "chars" to (title?.length ?: 0))
                 }
             }
             if (prefs.cleanupEnabled && keys.has()) {

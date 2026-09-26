@@ -5,12 +5,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/** A spoken note: what was typed into the note, and the phone's own text before cleanup. */
-data class Note(val id: Long, val at: Long, val text: String, val raw: String) {
+/**
+ * A spoken note: its text, the phone's own text before cleanup, and a title
+ * (the AI's, or the first few words until that arrives).
+ */
+data class Note(val id: Long, val at: Long, val text: String, val raw: String, val title: String = "") {
     fun toJson(): JSONObject = JSONObject().put("id", id).put("at", at).put("text", text).put("raw", raw)
+        .put("title", title)
 
     companion object {
-        fun fromJson(j: JSONObject) = Note(j.getLong("id"), j.getLong("at"), j.optString("text"), j.optString("raw"))
+        fun fromJson(j: JSONObject) = Note(
+            j.getLong("id"), j.getLong("at"), j.optString("text"), j.optString("raw"), j.optString("title"),
+        )
     }
 }
 
@@ -26,12 +32,15 @@ class NotesStore(context: Context) {
     fun list(): List<Note> = read().sortedByDescending { it.at }
 
     @Synchronized
-    fun add(text: String, raw: String): Note {
+    fun add(text: String, raw: String, title: String): Note {
         val now = System.currentTimeMillis()
-        val note = Note(now, now, text, raw)
+        val note = Note(now, now, text, raw, title)
         write(read() + note)
         return note
     }
+
+    @Synchronized
+    fun setTitle(id: Long, title: String) = write(read().map { if (it.id == id) it.copy(title = title) else it })
 
     @Synchronized
     fun delete(id: Long) = write(read().filterNot { it.id == id })
