@@ -540,6 +540,24 @@ share and nobody else's usage lands on your bill.
   with Obtainium.
 - Release signing key stays off the repo and off the laptop's git history.
 
+### 4.11 Voice notes (added 2026-09-26)
+
+- **Trigger**: double-press volume up (within 0.4 s), anywhere, screen on
+  (lock screen included; Android sends no keys to accessibility services with
+  the screen off). The first press changes the volume as usual; Flowtype keeps
+  the second and steps the volume back, so the net change is zero. Volume up
+  again, or ✓, saves; ✕ discards. Also a "Take a note now" button.
+- A floating ✕/waveform/✓ panel, since there's no text field. Same pipeline:
+  on-phone transcription, spoken commands, dictionary, cleanup in the "notes"
+  style when it's on, other audio paused.
+- **Notes screen**: newest first, search, copy, delete. Kept until deleted.
+- **Google Keep**: Keep's API covers Workspace accounts only, so nothing can
+  write to a personal Keep silently. Each note has **Send to Keep**, which
+  opens Keep's own share card filled in; one tap saves it (Ethan's choice
+  over opening Keep after every note).
+- Needs `canRequestFilterKeyEvents`; the Notes screen says so if Android
+  isn't passing keys yet (turn the service off and on).
+
 ---
 
 ## 5. Latency budget (10-second sentence, Galaxy S25) — *est.*

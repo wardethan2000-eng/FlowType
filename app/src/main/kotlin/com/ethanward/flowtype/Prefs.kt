@@ -103,4 +103,9 @@ class Prefs(context: Context) {
     var pauseOtherAudio: Boolean
         get() = prefs.getBoolean("pause_other_audio", true)
         set(value) = prefs.edit().putBoolean("pause_other_audio", value).apply()
+
+    /** Double-press volume up to dictate a note. */
+    var volumeNotes: Boolean
+        get() = prefs.getBoolean("volume_notes", true)
+        set(value) = prefs.edit().putBoolean("volume_notes", value).apply()
 }

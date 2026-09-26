@@ -8,6 +8,7 @@
 
     <!-- App names in History: see apps with a launcher icon. -->
     <queries>
+        <package android:name="com.google.android.keep" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
@@ -58,6 +59,11 @@
         <activity
             android:name=".ui.ButtonSettingsActivity"
             android:exported="false" />
+
+        <activity
+            android:name=".ui.NotesActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.DeveloperActivity"
