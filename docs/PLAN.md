@@ -185,6 +185,11 @@ Flowtype gets its own `PRIVACY.md`.
 - Bluetooth headset mic: use it if connected (setting), via
   `AudioManager.setCommunicationDevice`.
 - A wake lock only while recording or processing.
+- **Pause other audio while listening** (Ethan, 2026-09-26; Wispr Flow
+  doesn't): exclusive transient audio focus, so YouTube or music pauses and
+  resumes by itself when listening ends. If Android refuses focus to the
+  service while something plays, a pause media key instead, and play after,
+  only if we paused it. A setting, on by default.
 
 ### 4.3 Transcription (local, Parakeet via sherpa-onnx)
 

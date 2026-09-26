@@ -32,6 +32,7 @@ import com.ethanward.flowtype.asr.joinPieces
 import com.ethanward.flowtype.asr.ModelStore
 import com.ethanward.flowtype.asr.Transcriber
 import com.ethanward.flowtype.audio.AudioCapture
+import com.ethanward.flowtype.audio.OtherAudio
 import com.ethanward.flowtype.audio.SignalStats
 import com.ethanward.flowtype.audio.Wav
 import com.ethanward.flowtype.cleanup.ApiKeyStore
@@ -73,6 +74,7 @@ class DictationService : AccessibilityService() {
     private lateinit var history: HistoryStore
     private lateinit var keys: ApiKeyStore
     private lateinit var cleaner: Cleaner
+    private lateinit var otherAudio: OtherAudio
     private val net = Executors.newSingleThreadExecutor { Thread(it, "flowtype-cleanup") }
     private lateinit var windowManager: WindowManager
 
@@ -110,6 +112,7 @@ class DictationService : AccessibilityService() {
         history = HistoryStore(this) { prefs.historyDays }
         keys = ApiKeyStore(this)
         cleaner = Cleaner(keys)
+        otherAudio = OtherAudio(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         instance = this
         Trace.event("service_connected")
@@ -401,6 +404,8 @@ class DictationService : AccessibilityService() {
             chunker?.release()
             chunker = if (live) runCatching { LiveChunker(store.vadFile()) { loadModel().first.decode(it) } }.getOrNull() else null
         }
+        // Pause a video or music first, so the mic hears you and not it.
+        if (prefs.pauseOtherAudio) otherAudio.pause()
         val cap = AudioCapture(
             onLevel = { level -> main.post { if (state == MicButton.State.RECORDING) button?.setLevel(level) } },
             onFrame = if (live) { frame ->
@@ -412,6 +417,7 @@ class DictationService : AccessibilityService() {
             } else null,
         )
         if (!cap.start()) {
+            otherAudio.resume()
             asr.execute { dropChunker() }
             toast("Couldn't open the microphone")
             return false
@@ -432,6 +438,7 @@ class DictationService : AccessibilityService() {
         val cap = capture ?: return
         capture = null
         val audioMs = cap.stop().size / 16
+        otherAudio.resume()
         asr.execute { dropChunker() }
         button?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         Trace.event("dictation_cancelled", "app" to dictationField?.packageName, "audioMs" to audioMs)
@@ -444,6 +451,7 @@ class DictationService : AccessibilityService() {
         val cap = capture ?: return
         capture = null
         val pcm = cap.stop()
+        otherAudio.resume()
         button?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         setState(MicButton.State.BUSY)
         val startedSession = dictationSession
@@ -717,6 +725,7 @@ class DictationService : AccessibilityService() {
 
     override fun onDestroy() {
         instance = null
+        if (capture != null) otherAudio.resume()
         capture?.stop()
         capture = null
         if (attached) runCatching { windowManager.removeView(button) }

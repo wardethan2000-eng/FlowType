@@ -98,4 +98,9 @@ class Prefs(context: Context) {
     var liveChunking: Boolean
         get() = prefs.getBoolean("live_chunking", false)
         set(value) = prefs.edit().putBoolean("live_chunking", value).apply()
+
+    /** Pause videos and music while listening; they resume after. */
+    var pauseOtherAudio: Boolean
+        get() = prefs.getBoolean("pause_other_audio", true)
+        set(value) = prefs.edit().putBoolean("pause_other_audio", value).apply()
 }

@@ -47,6 +47,16 @@ class ButtonSettingsActivity : AppCompatActivity() {
                 Toast.makeText(this@ButtonSettingsActivity, "The mic button goes back above the keyboard", Toast.LENGTH_SHORT).show()
             }
             reset.isEnabled = !prefs.buttonFollowsKeyboard
+            section("While listening")
+            card(padded = false) {
+                addView(com.google.android.material.materialswitch.MaterialSwitch(context).apply {
+                    text = "Pause videos and music"
+                    isChecked = prefs.pauseOtherAudio
+                    setPadding(dp(16), dp(8), dp(16), 0)
+                    setOnCheckedChangeListener { _, on -> prefs.pauseOtherAudio = on }
+                })
+                text("They pick up again as soon as you tap ✓ or ✕.", secondary = true).setPadding(dp(16), 0, dp(16), dp(12))
+            }
         }
     }
 }
