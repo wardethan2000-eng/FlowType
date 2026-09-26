@@ -21,6 +21,22 @@ therefore about 0.25–0.4 s for everyday lengths without cleanup, inside the
 Whole-utterance decoding of 60 s pushes the process past 1.2–1.7 GB. Live
 chunking (Phase 2) is needed for long dictations for memory as well as speed.
 
+## First end-to-end dictations (2026-09-26, Phase 2 build)
+
+Two ~3.5 s dictations in Flowtype's own field, v2 with live chunking, Luna at
+the default tier, style "general":
+
+| | 1st (cold) | 2nd (warm) |
+|---|---|---|
+| Decoded while talking / left after ✓ | 0 / 149 ms | 141 / 1 ms |
+| Luna first token / total | 1147 / 1258 ms | 790 / 1070 ms |
+| Prompt cache | 0 of 1303 tokens | 1278 of 1304 tokens |
+| Stop → text in field | 1453 ms | 1099 ms |
+
+So the ≥ 1,024-token prefix is cached as planned, and a warm dictation lands
+inside the 1.2 s target. Luna's first token is the bulk of it. Still to run:
+the Developer tools → Cleanup timing comparison (Luna fast, gpt-4.1-nano).
+
 ## Insertion
 
 | Where | Path | Result |
@@ -45,7 +61,7 @@ chunking (Phase 2) is needed for long dictations for memory as well as speed.
 |---|---|---|
 | Default ASR model | **Parakeet v2** | Ethan's call without recordings; it "works ridiculously well" in use, and 180 ms for 5 s is fast enough. Unified stays downloadable but untested |
 | Model loading | **Keep: load when a text field takes input**, hold while in use, release after 15 minutes idle | Load is 1.9 s, far above the 0.5 s bar for load-on-tap |
-| Cleanup model and tier | **Provisional: gpt-6-luna, default tier, 1.8 s deadline** | Not measured yet; the timing tool is built and needs the key. Revisit when it runs |
+| Cleanup model and tier | **gpt-6-luna, default tier, 1.8 s deadline (provisional)** | Two real dictations: 1.07–1.26 s total, cache hits from the second call. The fast-tier and nano comparison hasn't run yet |
 | Any app needing the paste path | **None so far** (2 of 9 apps) | Phase 1 builds SET_TEXT and paste anyway, per §4.6 |
 | Foreground service for the mic | **Not needed** | Background capture works |
 
@@ -53,9 +69,8 @@ chunking (Phase 2) is needed for long dictations for memory as well as speed.
 
 - Accuracy on Ethan's voice, chunked vs whole, and the unified A/B: skipped
   with the recordings (Ethan, 2026-09-25). The bench is ready if needed.
-- Cleanup timing (cold/warm, first token, cache hit) for Luna, Luna fast and
-  gpt-4.1-nano: needs the OpenAI key pasted in Developer tools → Cleanup
-  timing.
+- Cleanup timing for Luna fast and gpt-4.1-nano (Luna's default tier is
+  measured above).
 - The rest of the app matrix (Gmail, WhatsApp, Chrome, Slack, Discord, Keep,
   Samsung Notes, ChatGPT/Claude) and Chrome/WebView pages.
 - Battery over 10 minutes of use; the unified model's speed and RAM; v2 RAM in
