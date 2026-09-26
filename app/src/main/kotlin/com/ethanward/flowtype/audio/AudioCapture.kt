@@ -10,7 +10,11 @@ import android.os.Process
  * 16 kHz mono 16-bit capture from the VOICE_RECOGNITION source (PLAN §4.2).
  * Audio stays in memory; nothing is written unless a bench screen asks.
  */
-class AudioCapture(private val onLevel: ((Float) -> Unit)? = null) {
+class AudioCapture(
+    private val onLevel: ((Float) -> Unit)? = null,
+    /** Each 30 ms frame as it arrives, on the mic thread (the array is the caller's to keep). */
+    private val onFrame: ((ShortArray) -> Unit)? = null,
+) {
     private var record: AudioRecord? = null
     private var thread: Thread? = null
     @Volatile private var running = false
@@ -49,8 +53,10 @@ class AudioCapture(private val onLevel: ((Float) -> Unit)? = null) {
             val n = r.read(frame, 0, frame.size)
             if (n < 0) break
             if (n == 0) continue
-            synchronized(chunks) { chunks.add(frame.copyOf(n)) }
+            val copy = frame.copyOf(n)
+            synchronized(chunks) { chunks.add(copy) }
             onLevel?.invoke(SignalStats.rms(frame, n))
+            onFrame?.invoke(copy)
         }
     }
 

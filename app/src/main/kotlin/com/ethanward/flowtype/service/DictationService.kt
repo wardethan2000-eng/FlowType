@@ -26,6 +26,8 @@ import android.widget.Toast
 import com.ethanward.flowtype.Prefs
 import com.ethanward.flowtype.Trace
 import com.ethanward.flowtype.asr.AsrModels
+import com.ethanward.flowtype.asr.LiveChunker
+import com.ethanward.flowtype.asr.joinPieces
 import com.ethanward.flowtype.asr.ModelStore
 import com.ethanward.flowtype.asr.Transcriber
 import com.ethanward.flowtype.audio.AudioCapture
@@ -86,6 +88,8 @@ class DictationService : AccessibilityService() {
     private var dictationField: EditorInfo? = null
 
     private var transcriber: Transcriber? = null
+    /** asr thread only: the live chunker for the dictation in progress. */
+    private var chunker: LiveChunker? = null
 
     private val releaseIdleModel = Runnable { asr.execute { unloadModel("idle") } }
     private val refreshKeyboard = Runnable { refreshKeyboard() }
@@ -307,8 +311,18 @@ class DictationService : AccessibilityService() {
             toast("Download a speech model in Flowtype first")
             return
         }
-        val cap = AudioCapture { level -> main.post { if (state == MicButton.State.RECORDING) button?.setLevel(level) } }
+        // Transcribe while you talk when the pause detector is there (PLAN §4.3).
+        val live = store.isVadInstalled()
+        asr.execute {
+            chunker?.release()
+            chunker = if (live) runCatching { LiveChunker(store.vadFile()) { loadModel().first.decode(it) } }.getOrNull() else null
+        }
+        val cap = AudioCapture(
+            onLevel = { level -> main.post { if (state == MicButton.State.RECORDING) button?.setLevel(level) } },
+            onFrame = if (live) { frame -> asr.execute { runCatching { chunker?.accept(frame) } } } else null,
+        )
         if (!cap.start()) {
+            asr.execute { dropChunker() }
             toast("Couldn't open the microphone")
             return
         }
@@ -326,6 +340,7 @@ class DictationService : AccessibilityService() {
         val cap = capture ?: return
         capture = null
         val audioMs = cap.stop().size / 16
+        asr.execute { dropChunker() }
         button?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         Trace.event("dictation_cancelled", "app" to dictationField?.packageName, "audioMs" to audioMs)
         dictationField = null
@@ -347,10 +362,14 @@ class DictationService : AccessibilityService() {
             val stats = SignalStats.of(samples)
             val dict = dictionary.load()
             val pass = DictionaryPass(dict)
+            val live = chunker
+            chunker = null
             val local = runCatching {
                 val (t, loadMs) = loadModel()
                 val started = SystemClock.elapsedRealtime()
-                val heard = t.decode(samples)
+                // Live: only the unfinished tail is left to decode. Otherwise the whole thing.
+                val chunked = live?.let { c -> runCatching { c.finish() }.also { c.release() }.getOrNull() }
+                val heard = chunked?.let { joinPieces(it.pieces, keepCase = dict.words.toSet()) } ?: t.decode(samples)
                 val decodeMs = SystemClock.elapsedRealtime() - started
                 val result = pass.apply(heard)
                 Trace.event(
@@ -358,7 +377,10 @@ class DictationService : AccessibilityService() {
                     "audioMs" to samples.size / 16, "peak" to "%.4f".format(stats.peak),
                     "rms" to "%.4f".format(stats.rms), "zeroPct" to "%.1f".format(stats.zeroFraction * 100),
                     "silent" to stats.silent, "loadMs" to loadMs,
-                    "decodeMs" to decodeMs, "chars" to result.text.length,
+                    "live" to (chunked != null), "pieces" to (chunked?.pieces?.size ?: 0),
+                    "wholeFallback" to (chunked?.wholeFallback ?: false),
+                    "decodedWhileTalkingMs" to (live?.decodedWhileRecordingMs ?: 0),
+                    "afterStopDecodeMs" to decodeMs, "chars" to result.text.length,
                     "replaced" to result.replaced, "respelled" to result.respelled,
                 )
                 result.text
@@ -485,6 +507,12 @@ class DictationService : AccessibilityService() {
         transcriber = t
         Trace.event("model_loaded", "model" to model.id, "loadMs" to t.loadMs, "threads" to prefs.asrThreads)
         return t to t.loadMs
+    }
+
+    /** asr thread. */
+    private fun dropChunker() {
+        chunker?.release()
+        chunker = null
     }
 
     /** asr thread. */

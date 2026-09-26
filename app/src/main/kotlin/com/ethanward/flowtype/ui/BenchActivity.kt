@@ -17,7 +17,9 @@ import com.ethanward.flowtype.asr.ModelStore
 import com.ethanward.flowtype.asr.Segmenter
 import com.ethanward.flowtype.asr.Transcriber
 import com.ethanward.flowtype.asr.Wer
-import com.ethanward.flowtype.asr.joinSegments
+import com.ethanward.flowtype.asr.LiveChunker
+import com.ethanward.flowtype.asr.Piece
+import com.ethanward.flowtype.asr.joinPieces
 import com.ethanward.flowtype.audio.AudioCapture
 import com.ethanward.flowtype.audio.Wav
 import com.ethanward.flowtype.dictionary.DictionaryPass
@@ -230,6 +232,7 @@ class BenchActivity : AppCompatActivity() {
         var hitsChunked = 0
         var hitsDict = 0
         val dictPass = DictionaryPass(DictionaryStore(this).load())
+        val keepCase = DictionaryStore(this).load().words.toSet()
         var termTotal = 0
         var segmentsTotal = 0
         var msWhole = 0L
@@ -261,10 +264,11 @@ class BenchActivity : AppCompatActivity() {
                 row.put("termsDict", hD)
                 if (segmenter != null) {
                     s = SystemClock.elapsedRealtime()
-                    val spans = segmenter.split(samples).map {
-                        it.padded(Wav.RATE / 2, Wav.RATE / 4, samples.size)
-                    }
-                    val chunked = joinSegments(spans.map { t.decode(samples.copyOfRange(it.start, it.end)) })
+                    val spans = segmenter.split(samples)
+                    val chunked = joinPieces(spans.map { span ->
+                        val p = span.padded(LiveChunker.PAD_BEFORE, LiveChunker.PAD_AFTER, samples.size)
+                        Piece(span, t.decode(samples.copyOfRange(p.start, p.end)))
+                    }, keepCase = keepCase)
                     val chunkMs = SystemClock.elapsedRealtime() - s
                     msChunked += chunkMs
                     segmentsTotal += spans.size

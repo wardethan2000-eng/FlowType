@@ -21,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.ethanward.flowtype.Prefs
 import com.ethanward.flowtype.R
 import com.ethanward.flowtype.asr.AsrModels
+import com.ethanward.flowtype.asr.Downloads
 import com.ethanward.flowtype.asr.ModelStore
 import com.ethanward.flowtype.cleanup.ApiKeyStore
 import com.ethanward.flowtype.cleanup.CleanupConfig
@@ -76,9 +77,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val onDownload: () -> Unit = { refresh() }
+
     override fun onResume() {
         super.onResume()
+        Downloads.listen(onDownload)
         refresh()
+    }
+
+    override fun onPause() {
+        Downloads.unlisten(onDownload)
+        super.onPause()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -118,6 +127,12 @@ class MainActivity : AppCompatActivity() {
             else if (!connected) add("Flowtype is on but not running. Turn it off and on again." to ("Open settings" to ::openAccessibility))
             if (!mic) add("Allow Flowtype to use the microphone." to ("Allow" to ::askForMic))
             if (!modelReady) add("Download the speech model ($modelLabel)." to ("Models" to { open(ModelsActivity::class.java) }))
+            else if (!store.isVadInstalled()) {
+                val busy = "vad" in Downloads.running
+                add((if (busy) "Downloading the pause detector…" else
+                    "Download the pause detector (0.6 MB), so Flowtype transcribes while you talk.") to
+                    ("Download" to { Downloads.start("vad") { report -> store.installVad(report) } }))
+            }
             if (!getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)) {
                 add("Let Flowtype run in the background, so Samsung doesn't put it to sleep." to ("Allow" to ::askForBattery))
             }

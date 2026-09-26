@@ -45,10 +45,11 @@ class ModelsActivity : AppCompatActivity() {
     private fun render() {
         list.removeAllViews()
         for (m in AsrModels.ALL) list.modelCard(m)
-        list.section("For the speech bench")
+        list.section("Pause detector")
         list.card {
             heading("Silero VAD")
-            text("Splits recordings at pauses, to compare chunked and whole decoding.", secondary = true)
+            text("Finds the pauses in your speech, so Flowtype can transcribe while you talk. Without it, " +
+                "everything is transcribed after you tap ✓.", secondary = true)
             progressAndActions("vad", store.isVadInstalled(), AsrModels.VAD_BYTES) {
                 if (!store.isVadInstalled()) button("Download", ButtonKind.TONAL) {
                     Downloads.start("vad") { report -> store.installVad(report) }
@@ -66,7 +67,10 @@ class ModelsActivity : AppCompatActivity() {
         text(m.summary, secondary = true)
         progressAndActions(m.id, installed, m.bytes) {
             if (!installed) {
-                button("Download", ButtonKind.TONAL) { Downloads.start(m.id) { report -> store.install(m, report) } }
+                button("Download", ButtonKind.TONAL) {
+                    Downloads.start(m.id) { report -> store.install(m, report) }
+                    if (!store.isVadInstalled()) Downloads.start("vad") { report -> store.installVad(report) }
+                }
             } else {
                 button("Use this one", ButtonKind.TONAL) {
                     prefs.modelId = m.id
