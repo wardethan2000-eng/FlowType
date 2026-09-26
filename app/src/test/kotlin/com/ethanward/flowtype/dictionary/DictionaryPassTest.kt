@@ -25,7 +25,13 @@ class DictionaryPassTest {
     @Test
     fun onlyWholeWords() {
         assertEquals("bamboozled and carpet green", run("bamboozled and carpet green"))
-        assertEquals("petg", DictionaryPass(Dictionary().withReplacement(Replacement("pet g", "PETG"))).apply("petg").text)
+        assertEquals("the carpets", DictionaryPass(Dictionary().withWord("Carpet")).apply("the carpets").text)
+    }
+
+    @Test
+    fun replacementOutputsWithCapitalsAreSpellingsToo() {
+        // "petg" isn't the spoken form "pet g", but PETG is a spelling to keep.
+        assertEquals("PETG", DictionaryPass(Dictionary().withReplacement(Replacement("pet g", "PETG"))).apply("petg").text)
     }
 
     @Test

@@ -7,9 +7,11 @@ package com.ethanward.flowtype.dictionary
  * 1. Replacements: whole-word, any case, and the words of a phrase may be
  *    split by spaces or hyphens ("pet g", "Pet-G" → "PETG"). Longest phrase
  *    first, in one pass, so a replacement's output is never replaced again.
- * 2. Exact spellings: every Word and every replacement's output is written
- *    exactly as entered ("Decalforge" → "DecalForge"). A Word written in
- *    CamelCase also matches its parts heard apart ("decal forge").
+ * 2. Exact spellings: every Word, and every replacement output that has a
+ *    capital in it, is written exactly as entered ("Decalforge" →
+ *    "DecalForge", "petg" → "PETG"). A Word written in CamelCase also
+ *    matches its parts heard apart ("decal forge"). All-lowercase outputs
+ *    ("going to") aren't enforced, so they can still start a sentence.
  *
  * Fuzzy "sounds like" matching (bamboo → Bambu) is Phase 2; until then, add a
  * replacement for it.
@@ -22,7 +24,7 @@ class DictionaryPass(dictionary: Dictionary) {
     private val replaceRegex = alternation(replacements.map { phrasePattern(it.from) })
 
     private val spellings: List<String> =
-        (dictionary.words + dictionary.replacements.map { it.to.trim() })
+        (dictionary.words + dictionary.replacements.map { it.to.trim() }.filter { t -> t.any { it.isUpperCase() } })
             .filter { it.isNotBlank() }
             .distinct()
             .sortedByDescending { it.length }
