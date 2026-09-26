@@ -5,6 +5,8 @@ import org.json.JSONObject
 
 /** One model/tier setup the timing test compares (PLAN §5 dials). */
 data class CleanupConfig(
+    /** Stored in settings. */
+    val id: String,
     val label: String,
     val model: String,
     /** Luna's reasoning effort; null for models without reasoning (gpt-4.1-nano). */
@@ -13,10 +15,13 @@ data class CleanupConfig(
     val serviceTier: String?,
 ) {
     companion object {
-        val LUNA = CleanupConfig("Luna default", "gpt-6-luna", "none", null)
-        val LUNA_FAST = CleanupConfig("Luna fast", "gpt-6-luna", "none", "fast")
-        val NANO = CleanupConfig("gpt-4.1-nano", "gpt-4.1-nano", null, null)
+        val LUNA = CleanupConfig("luna", "Luna", "gpt-6-luna", "none", null)
+        val LUNA_FAST = CleanupConfig("luna-fast", "Luna, fast tier", "gpt-6-luna", "none", "fast")
+        val NANO = CleanupConfig("nano", "GPT-4.1 nano", "gpt-4.1-nano", null, null)
         val ALL = listOf(LUNA, LUNA_FAST, NANO)
+        val DEFAULT = LUNA
+
+        fun byId(id: String?) = ALL.firstOrNull { it.id == id } ?: DEFAULT
     }
 }
 

@@ -1,6 +1,5 @@
 package com.ethanward.flowtype.ui
 
-import android.content.ClipboardManager
 import android.os.Bundle
 import android.text.InputType
 import android.view.WindowManager
@@ -16,9 +15,8 @@ import java.io.File
 import kotlin.concurrent.thread
 
 /**
- * Cleanup timing from the phone (PLAN §7 Phase 0 step 6), and the developer
- * version of the key screen: the key is pasted here, kept in the Keystore
- * (ApiKeyStore), and only ever shown masked.
+ * Cleanup timing from the phone (PLAN §7 Phase 0 step 6). It uses the key
+ * saved on the AI cleanup screen.
  *
  * Numbers append to `cleanup/results.jsonl` in the app's external files folder:
  * no key, no text.
@@ -26,7 +24,6 @@ import kotlin.concurrent.thread
 class CleanupTestActivity : AppCompatActivity() {
     private lateinit var keys: ApiKeyStore
     private lateinit var keyStatus: TextView
-    private lateinit var keyField: EditText
     private lateinit var runs: EditText
     private lateinit var pause: EditText
     private lateinit var output: TextView
@@ -37,17 +34,10 @@ class CleanupTestActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         keys = ApiKeyStore(this)
         page("Cleanup timing") {
-            heading("OpenAI API key")
+            heading("Key")
             keyStatus = text()
-            keyField = field("sk-…", type = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
-            row {
-                button("Paste") {
-                    val clip = getSystemService(ClipboardManager::class.java).primaryClip
-                    val pasted = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this@CleanupTestActivity)
-                    keyField.setText(pasted?.let { ApiKeyStore.normalize(it.toString()) } ?: "")
-                }
-                button("Save") { saveKey() }
-                button("Remove") { keys.remove(); showKey() }
+            button("Change it in AI cleanup", ButtonKind.OUTLINED) {
+                startActivity(android.content.Intent(this@CleanupTestActivity, CleanupSettingsActivity::class.java))
             }
             heading("Run")
             text("Sends made-up dictations (nothing of yours) with a ${CleanupPrompt.estimateTokens(CleanupPrompt.instructions(CleanupTiming.DICTIONARY))}-token prefix, estimated. store: false.")
@@ -57,27 +47,11 @@ class CleanupTestActivity : AppCompatActivity() {
             button("Run timing") { run() }
             output = mono()
         }
-        showKey()
     }
 
-    private fun showKey() {
-        val key = keys.load()
-        keyStatus.text = when {
-            key != null -> "Saved: ${ApiKeyStore.mask(key)}"
-            keys.has() -> "A key is saved but can't be read. Remove it and paste it again."
-            else -> "No key saved."
-        }
-    }
-
-    private fun saveKey() {
-        val key = ApiKeyStore.normalize(keyField.text.toString())
-        if (!ApiKeyStore.looksValid(key)) {
-            keyStatus.text = "That doesn't look like an OpenAI key (it should start with sk-)."
-            return
-        }
-        keys.save(key)
-        keyField.setText("")
-        showKey()
+    override fun onResume() {
+        super.onResume()
+        keyStatus.text = keys.load()?.let { "Using ${ApiKeyStore.mask(it)}" } ?: "No key saved."
     }
 
     private fun log(line: String) = runOnUiThread { output.append(line + "\n") }

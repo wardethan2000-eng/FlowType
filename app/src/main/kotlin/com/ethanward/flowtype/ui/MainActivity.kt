@@ -1,11 +1,16 @@
 package com.ethanward.flowtype.ui
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
+import android.text.InputType
+import android.view.View
 import android.provider.Settings
 import android.view.Gravity
 import android.widget.ImageView
@@ -17,6 +22,8 @@ import com.ethanward.flowtype.Prefs
 import com.ethanward.flowtype.R
 import com.ethanward.flowtype.asr.AsrModels
 import com.ethanward.flowtype.asr.ModelStore
+import com.ethanward.flowtype.cleanup.ApiKeyStore
+import com.ethanward.flowtype.cleanup.CleanupConfig
 import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.ethanward.flowtype.service.DictationService
 import com.google.android.material.R as M
@@ -32,6 +39,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: MaterialCardView
     private lateinit var dictionarySummary: TextView
     private lateinit var modelSummary: TextView
+    private lateinit var cleanupSummary: TextView
+    private lateinit var tryCard: MaterialCardView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,8 +48,14 @@ class MainActivity : AppCompatActivity() {
         store = ModelStore(this)
         page("Flowtype", up = false) {
             status = card { }
+            tryCard = card {
+                heading("Try it here")
+                field("Tap here, then the mic above the keyboard", type = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+            }
             section("Settings")
             card(padded = false) {
+                cleanupSummary = navRow("AI cleanup") { open(CleanupSettingsActivity::class.java) }
+                divider()
                 dictionarySummary = navRow("Dictionary") { open(DictionaryActivity::class.java) }
                 divider()
                 modelSummary = navRow("Speech model") { open(ModelsActivity::class.java) }
@@ -82,6 +97,13 @@ class MainActivity : AppCompatActivity() {
             d.words.size.takeIf { it > 0 }?.let { "$it word" + if (it == 1) "" else "s" },
             d.replacements.size.takeIf { it > 0 }?.let { "$it replacement" + if (it == 1) "" else "s" },
         ).filterNotNull().joinToString(" · ")
+        val keys = ApiKeyStore(this)
+        cleanupSummary.text = when {
+            !prefs.cleanupEnabled -> "Off"
+            !keys.has() -> "Add your OpenAI key to turn it on"
+            prefs.keyProblem != null -> "Key problem: " + CleanupSettingsActivity.problemText(prefs.keyProblem!!)
+            else -> "On · " + CleanupConfig.byId(prefs.cleanupModel).label
+        }
         renderStatus(model.label, store.isInstalled(model))
     }
 
@@ -96,11 +118,15 @@ class MainActivity : AppCompatActivity() {
             else if (!connected) add("Flowtype is on but not running. Turn it off and on again." to ("Open settings" to ::openAccessibility))
             if (!mic) add("Allow Flowtype to use the microphone." to ("Allow" to ::askForMic))
             if (!modelReady) add("Download the speech model ($modelLabel)." to ("Models" to { open(ModelsActivity::class.java) }))
+            if (!getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)) {
+                add("Let Flowtype run in the background, so Samsung doesn't put it to sleep." to ("Allow" to ::askForBattery))
+            }
         }
 
         val column = status.column
         column.removeAllViews()
         val ready = todo.isEmpty()
+        tryCard.visibility = if (ready) View.VISIBLE else View.GONE
         status.setCardBackgroundColor(themeColor(if (ready) M.attr.colorPrimaryContainer else M.attr.colorSurfaceContainerHigh))
         val onColor = themeColor(if (ready) M.attr.colorOnPrimaryContainer else M.attr.colorOnSurface)
         column.addView(LinearLayout(this).apply {
@@ -143,4 +169,10 @@ class MainActivity : AppCompatActivity() {
     private fun openAccessibility() = startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
 
     private fun askForMic() = requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+
+    /** Battery → Unrestricted, in one system prompt (PLAN §4.8 step 3). */
+    @SuppressLint("BatteryLife")
+    private fun askForBattery() = startActivity(
+        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")),
+    )
 }

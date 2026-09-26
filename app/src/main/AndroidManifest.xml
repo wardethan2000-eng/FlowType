@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- One tap to Battery → Unrestricted, so One UI doesn't put the service to sleep. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- allowBackup off: the Keystore-wrapped API key must not reach a cloud
          backup or Smart Switch (PLAN §4.9). -->
@@ -32,6 +34,11 @@
 
         <activity
             android:name=".ui.DictionaryActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.CleanupSettingsActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 

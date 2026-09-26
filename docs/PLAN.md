@@ -618,6 +618,29 @@ developer screens.
 - **Exit**: you use it for 3 days instead of Wispr Flow in the §1 app list, with
   no lost text and no "it answered me" incidents that the guards didn't catch.
 
+**Status, 2026-09-25** (built, tests green on CI; not yet tried with a key on
+the phone):
+
+- Modules: `service/`, `overlay/`, `audio/`, `asr/`, `dictionary/`,
+  `cleanup/`, `insert/`, and `ui/` for every screen (no separate `settings/`).
+- Cleanup: streamed, guards with early abort on the first 3 words, 1.8 s
+  deadline (1.2/1.8/2.5 s setting), connection pre-opened at record start
+  with a keyless HEAD, ≤ 3 content words skipped, no cleanup in URL, email,
+  number or password fields, per-app style from the package and the
+  keyboard's Search action (so part of Phase 2's per-app styles is in).
+  Dictionary words go in the prompt; pass 2 runs on the answer.
+- Key screen: Settings → AI cleanup, with Paste, Save (tests), Test key,
+  Remove, plain-English results, model and deadline choices. Key problems
+  show on the home screen and in a one-time toast; dictation carries on.
+- Insertion: SET_TEXT and paste only when commitText provably changed
+  nothing (the text before the cursor, or the node's text, is identical after
+  a settle pause), so a fallback can't type the text twice. Then copy.
+- Setup: instead of a separate wizard, the home screen's status card is the
+  checklist (accessibility, mic, model, battery Unrestricted), with a "Try it
+  here" field once everything is set. The key stays optional there.
+- Still to do: the Samsung *Never sleeping apps* hint, the restricted-setting
+  help for non-adb installs, and the 3-day exit test.
+
 ### Phase 2: fast and seamless (≈ 1 week)
 
 - VAD live chunking with padding and join rules, model load policy,
@@ -729,8 +752,9 @@ developer screens.
    Hold-to-talk is a later option, not the default.
 4. Phone: **Samsung Galaxy S25**.
 5. A clean app, not a port of Phone Whisper or its fork (§3).
-6. ASR: **Parakeet TDT 0.6B v2 int8**, fallback 110M transducer; unified 0.6B
-   A/B in Phase 0.
+6. ASR: **Parakeet TDT 0.6B v2 int8**, fallback 110M transducer. The unified
+   0.6B A/B was skipped with the personal recordings (Ethan, 2026-09-25); see
+   docs/PHASE0-RESULTS.md.
 7. Cleanup: **gpt-6-luna**, effort `none`, `store: false`; gpt-4.1-nano as the
    measured alternative.
 8. `minSdk` 33; app id `com.ethanward.flowtype`. The id can change freely until

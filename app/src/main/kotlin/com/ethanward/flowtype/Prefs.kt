@@ -2,6 +2,7 @@ package com.ethanward.flowtype
 
 import android.content.Context
 import com.ethanward.flowtype.asr.AsrModels
+import com.ethanward.flowtype.cleanup.CleanupConfig
 
 /** Small settings shared by the screens and the service. */
 class Prefs(context: Context) {
@@ -46,4 +47,28 @@ class Prefs(context: Context) {
         prefs.edit().remove("button_port_x").remove("button_port_y")
             .remove("button_land_x").remove("button_land_y").apply()
     }
+
+    /** AI cleanup on or off. It also needs a saved key to run. */
+    var cleanupEnabled: Boolean
+        get() = prefs.getBoolean("cleanup_on", true)
+        set(value) = prefs.edit().putBoolean("cleanup_on", value).apply()
+
+    var cleanupModel: String
+        get() = prefs.getString("cleanup_model", null) ?: CleanupConfig.DEFAULT.id
+        set(value) = prefs.edit().putString("cleanup_model", value).apply()
+
+    /** How long to wait for cleanup before typing the local text (PLAN §4.5). */
+    var cleanupDeadlineMs: Long
+        get() = prefs.getLong("cleanup_deadline_ms", 1800)
+        set(value) = prefs.edit().putLong("cleanup_deadline_ms", value).apply()
+
+    /** The last key problem (a Cleaner.Reason name), shown on the home screen; null when fine. */
+    var keyProblem: String?
+        get() = prefs.getString("key_problem", null)
+        set(value) = prefs.edit().putString("key_problem", value).apply()
+
+    /** The one-time "that used the clipboard" notice (PLAN §4.6 step 3). */
+    var pasteNoticeShown: Boolean
+        get() = prefs.getBoolean("paste_notice", false)
+        set(value) = prefs.edit().putBoolean("paste_notice", value).apply()
 }

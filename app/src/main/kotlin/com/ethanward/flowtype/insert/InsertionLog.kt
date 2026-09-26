@@ -19,6 +19,12 @@ enum class Outcome {
     FIELD_CHANGED,
     /** The model heard nothing. Nothing sent. */
     EMPTY,
+    /** commitText did nothing; ACTION_SET_TEXT under the §4.6 rules worked, checked. */
+    SET_TEXT,
+    /** commitText did nothing and SET_TEXT wasn't allowed; pasted from the clipboard. */
+    PASTED,
+    /** Nothing else worked: the text is on the clipboard for a long-press paste. */
+    COPIED,
 }
 
 /**

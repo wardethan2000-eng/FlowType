@@ -3,6 +3,7 @@ package com.ethanward.flowtype.service
 import android.Manifest
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.InputMethod
+import android.content.ClipboardManager
 import android.content.ComponentCallbacks2
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -18,6 +19,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.EditorInfo
 import android.widget.Toast
@@ -29,6 +31,10 @@ import com.ethanward.flowtype.asr.Transcriber
 import com.ethanward.flowtype.audio.AudioCapture
 import com.ethanward.flowtype.audio.SignalStats
 import com.ethanward.flowtype.audio.Wav
+import com.ethanward.flowtype.cleanup.ApiKeyStore
+import com.ethanward.flowtype.cleanup.AppStyle
+import com.ethanward.flowtype.cleanup.Cleaner
+import com.ethanward.flowtype.cleanup.CleanupConfig
 import com.ethanward.flowtype.dictionary.DictionaryPass
 import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.ethanward.flowtype.insert.Inserter
@@ -36,14 +42,17 @@ import com.ethanward.flowtype.insert.InsertionLog
 import com.ethanward.flowtype.insert.InsertionRecord
 import com.ethanward.flowtype.insert.InsertionRules
 import com.ethanward.flowtype.insert.Outcome
+import com.ethanward.flowtype.overlay.ButtonPlacement
+import com.ethanward.flowtype.overlay.MicButton
 import java.util.concurrent.Executors
 
 /**
  * The dictation service. Its own input method (flagInputMethodEditor) tells it
  * when a text field takes input; the button shows while that field is live and
  * the keyboard window is up. Tap: listen. ✓: decode on the phone, apply the
- * dictionary, and commitText at the cursor (PLAN §4.1, §4.4, §4.6). ✕: discard.
- * No AI cleanup yet.
+ * dictionary, clean it up with the AI model when there's a key (falling back
+ * to the local text on any problem), and type it at the cursor (PLAN §4.1,
+ * §4.4, §4.5, §4.6). ✕: discard.
  *
  * All fields are touched on the main thread, except [transcriber] (asr thread).
  */
@@ -56,6 +65,9 @@ class DictationService : AccessibilityService() {
     private lateinit var store: ModelStore
     private lateinit var log: InsertionLog
     private lateinit var dictionary: DictionaryStore
+    private lateinit var keys: ApiKeyStore
+    private lateinit var cleaner: Cleaner
+    private val net = Executors.newSingleThreadExecutor { Thread(it, "flowtype-cleanup") }
     private lateinit var windowManager: WindowManager
 
     private var button: MicButton? = null
@@ -84,6 +96,8 @@ class DictationService : AccessibilityService() {
         store = ModelStore(this)
         log = InsertionLog(this)
         dictionary = DictionaryStore(this)
+        keys = ApiKeyStore(this)
+        cleaner = Cleaner(keys)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         instance = this
         Trace.event("service_connected")
@@ -304,6 +318,7 @@ class DictationService : AccessibilityService() {
         button?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         setState(MicButton.State.RECORDING)
         preloadModel()
+        if (cleanupStyle(field) != null) net.execute { cleaner.prewarm() }
     }
 
     /** ✕: stop listening and throw the audio away. Nothing is typed. */
@@ -330,32 +345,85 @@ class DictationService : AccessibilityService() {
         asr.execute {
             val samples = Wav.toFloats(pcm)
             val stats = SignalStats.of(samples)
-            val text = runCatching {
+            val dict = dictionary.load()
+            val pass = DictionaryPass(dict)
+            val local = runCatching {
                 val (t, loadMs) = loadModel()
                 val started = SystemClock.elapsedRealtime()
                 val heard = t.decode(samples)
                 val decodeMs = SystemClock.elapsedRealtime() - started
-                val dict = DictionaryPass(dictionary.load()).apply(heard)
-                val text = dict.text
+                val result = pass.apply(heard)
                 Trace.event(
                     "dictation", "app" to field.packageName, "model" to t.model.id,
                     "audioMs" to samples.size / 16, "peak" to "%.4f".format(stats.peak),
                     "rms" to "%.4f".format(stats.rms), "zeroPct" to "%.1f".format(stats.zeroFraction * 100),
                     "silent" to stats.silent, "loadMs" to loadMs,
-                    "decodeMs" to decodeMs, "chars" to text.length,
-                    "replaced" to dict.replaced, "respelled" to dict.respelled,
-                    "dictMs" to SystemClock.elapsedRealtime() - started - decodeMs,
+                    "decodeMs" to decodeMs, "chars" to result.text.length,
+                    "replaced" to result.replaced, "respelled" to result.respelled,
                 )
-                text
+                result.text
             }.getOrElse {
                 Trace.warn("decode_failed", "error" to it.javaClass.simpleName)
                 ""
             }
-            main.post {
-                Trace.event("stop_to_insert_call", "ms" to SystemClock.elapsedRealtime() - stoppedAt)
-                insert(text, "dictation", startedSession, field)
+            val style = cleanupStyle(field)
+            if (local.isBlank() || style == null) {
+                main.post { finish(local, startedSession, field, stoppedAt) }
+                return@execute
+            }
+            net.execute {
+                val text = cleanup(local, style, pass, dict.words + dict.replacements.map { it.to }.filter { t -> t.any(Char::isUpperCase) })
+                main.post { finish(text, startedSession, field, stoppedAt) }
             }
         }
+    }
+
+    /** Cleanup is used when it's on, a key is saved, and the field suits it. */
+    private fun cleanupStyle(field: EditorInfo): String? {
+        if (!prefs.cleanupEnabled || !keys.has()) return null
+        return AppStyle.forField(field.packageName, field.inputType, field.imeOptions)
+    }
+
+    /** net thread. The cleaned text, or [local] if cleanup fails in any way. */
+    private fun cleanup(local: String, style: String, pass: DictionaryPass, words: List<String>): String {
+        val config = CleanupConfig.byId(prefs.cleanupModel)
+        val result = cleaner.clean(local, style, words, config, prefs.cleanupDeadlineMs)
+        when (result) {
+            is Cleaner.Result.Cleaned -> {
+                Trace.event(
+                    "cleanup", "outcome" to "cleaned", "model" to config.id, "style" to style,
+                    "firstTokenMs" to result.firstTokenMs, "totalMs" to result.totalMs,
+                    "cached" to result.cachedTokens, "input" to result.inputTokens,
+                    "charsIn" to local.length, "charsOut" to result.text.length,
+                )
+                if (prefs.keyProblem != null) prefs.keyProblem = null
+                // Pass 2: the model may have re-cased a dictionary word.
+                return pass.apply(result.text).text
+            }
+            is Cleaner.Result.Fallback -> {
+                Trace.event(
+                    "cleanup", "outcome" to result.reason, "model" to config.id, "style" to style,
+                    "totalMs" to result.totalMs, "http" to result.http, "charsIn" to local.length,
+                )
+                if (result.reason.keyProblem) {
+                    val first = prefs.keyProblem != result.reason.name
+                    prefs.keyProblem = result.reason.name
+                    if (first) main.post { toast(keyProblemMessage(result.reason)) }
+                }
+                return local
+            }
+        }
+    }
+
+    private fun keyProblemMessage(reason: Cleaner.Reason) = when (reason) {
+        Cleaner.Reason.KEY_REJECTED -> "OpenAI didn't accept your key, so this was typed without AI cleanup"
+        Cleaner.Reason.NO_CREDIT -> "Your OpenAI account is out of credit, so this was typed without AI cleanup"
+        else -> "Your key can't use the cleanup model, so this was typed without AI cleanup"
+    }
+
+    private fun finish(text: String, startedSession: Int, field: EditorInfo, stoppedAt: Long) {
+        Trace.event("stop_to_insert_call", "ms" to SystemClock.elapsedRealtime() - stoppedAt)
+        insert(text, "dictation", startedSession, field)
     }
 
     /** Main thread. Inserts only into the input session recording started in. */
@@ -376,13 +444,22 @@ class DictationService : AccessibilityService() {
         }
         val method = inputMethod ?: return setState(MicButton.State.IDLE)
         io.execute {
-            val result = Inserter(method).insert(text)
+            val result = Inserter(
+                method,
+                focusedField = { runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull() },
+                clipboard = getSystemService(ClipboardManager::class.java),
+            ).insert(text)
             record(result.outcome, text.length, result.checkMs, result.retries)
             main.post {
                 when (result.outcome) {
                     Outcome.EMPTY -> toast("Didn't catch that")
                     Outcome.NOT_VERIFIED -> toast("Couldn't confirm the text went in")
                     Outcome.NO_CONNECTION -> toast("The field closed before the text was ready")
+                    Outcome.COPIED -> toast("Copied. Long-press the field and tap Paste.")
+                    Outcome.PASTED -> if (!prefs.pasteNoticeShown) {
+                        prefs.pasteNoticeShown = true
+                        toast("This app needed a paste, so your dictation is now on the clipboard")
+                    }
                     else -> {}
                 }
                 setState(MicButton.State.IDLE)
@@ -434,6 +511,7 @@ class DictationService : AccessibilityService() {
         asr.execute { unloadModel("destroy") }
         asr.shutdown()
         io.shutdown()
+        net.shutdown()
         super.onDestroy()
     }
 

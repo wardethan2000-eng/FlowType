@@ -18,7 +18,7 @@ class DeveloperActivity : AppCompatActivity() {
                     startActivity(Intent(this@DeveloperActivity, InsertionTestActivity::class.java))
                 }
                 divider()
-                navRow("Cleanup timing", "OpenAI key, and timing of each cleanup model") {
+                navRow("Cleanup timing", "Cold and warm timing of each cleanup model") {
                     startActivity(Intent(this@DeveloperActivity, CleanupTestActivity::class.java))
                 }
             }

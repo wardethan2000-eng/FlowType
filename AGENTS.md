@@ -7,12 +7,14 @@ what it says, in its phase order, and update it when a decision changes.
 
 ```text
 app/src/main/kotlin/com/ethanward/flowtype/     the app
-  service/   accessibility service: field watcher, button, record → decode → insert
+  service/   accessibility service: field watcher, record → decode → clean → insert
+  overlay/   the mic button, listening panel and waveform
   audio/     mic capture, WAV, loudness stats
   asr/       sherpa-onnx models: catalog, download, decode, VAD segments, WER
-  insert/    commitText + getSurroundingText check, insertion log
-  cleanup/   cleanup prompt, Responses API request/stream, Keystore-held key
-  ui/        main screen and the developer screens (bench, insertion, cleanup timing)
+  dictionary/ words and replacements, the offline pass, dictionary.json
+  insert/    commitText → safe SET_TEXT → paste → copy, insertion log
+  cleanup/   prompt, streamed Responses API call, guards, Keystore-held key
+  ui/        every screen: home, AI cleanup, dictionary, models, developer tools
 app/src/test/                                   JVM unit tests
 app/libs/sherpa-onnx.aar                        fetched on the box, never committed
 scripts/remote-build.sh                         every build, run on the build box

@@ -1,4 +1,4 @@
-package com.ethanward.flowtype.service
+package com.ethanward.flowtype.overlay
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

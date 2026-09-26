@@ -1,4 +1,4 @@
-package com.ethanward.flowtype.service
+package com.ethanward.flowtype.overlay
 
 /**
  * Where the overlay window goes. Positions are WindowManager offsets with
