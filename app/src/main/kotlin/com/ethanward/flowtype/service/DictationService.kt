@@ -27,6 +27,7 @@ import com.ethanward.flowtype.Prefs
 import com.ethanward.flowtype.Trace
 import com.ethanward.flowtype.asr.AsrModels
 import com.ethanward.flowtype.asr.LiveChunker
+import com.ethanward.flowtype.asr.SpokenCommands
 import com.ethanward.flowtype.asr.joinPieces
 import com.ethanward.flowtype.asr.ModelStore
 import com.ethanward.flowtype.asr.Transcriber
@@ -371,7 +372,7 @@ class DictationService : AccessibilityService() {
                 val chunked = live?.let { c -> runCatching { c.finish() }.also { c.release() }.getOrNull() }
                 val heard = chunked?.let { joinPieces(it.pieces, keepCase = dict.words.toSet()) } ?: t.decode(samples)
                 val decodeMs = SystemClock.elapsedRealtime() - started
-                val result = pass.apply(heard)
+                val result = pass.apply(SpokenCommands.apply(heard))
                 Trace.event(
                     "dictation", "app" to field.packageName, "model" to t.model.id,
                     "audioMs" to samples.size / 16, "peak" to "%.4f".format(stats.peak),
@@ -394,7 +395,13 @@ class DictationService : AccessibilityService() {
                 return@execute
             }
             net.execute {
-                val text = cleanup(local, style, pass, dict.words + dict.replacements.map { it.to }.filter { t -> t.any(Char::isUpperCase) })
+                // The ~80 characters before the cursor, so cleanup continues your sentence (PLAN §4.5).
+                val before = runCatching {
+                    inputMethod?.currentInputConnection?.getSurroundingText(CONTEXT_CHARS, 0, 0)?.let {
+                        it.text.subSequence(0, it.selectionStart.coerceIn(0, it.text.length)).toString()
+                    }
+                }.getOrNull()
+                val text = cleanup(local, style, pass, dict.words + dict.replacements.map { it.to }.filter { t -> t.any(Char::isUpperCase) }, before)
                 main.post { finish(text, startedSession, field, stoppedAt) }
             }
         }
@@ -407,9 +414,9 @@ class DictationService : AccessibilityService() {
     }
 
     /** net thread. The cleaned text, or [local] if cleanup fails in any way. */
-    private fun cleanup(local: String, style: String, pass: DictionaryPass, words: List<String>): String {
+    private fun cleanup(local: String, style: String, pass: DictionaryPass, words: List<String>, before: String?): String {
         val config = CleanupConfig.byId(prefs.cleanupModel)
-        val result = cleaner.clean(local, style, words, config, prefs.cleanupDeadlineMs)
+        val result = cleaner.clean(local, style, words, config, prefs.cleanupDeadlineMs, before)
         when (result) {
             is Cleaner.Result.Cleaned -> {
                 Trace.event(
@@ -470,6 +477,7 @@ class DictationService : AccessibilityService() {
                 method,
                 focusedField = { runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull() },
                 clipboard = getSystemService(ClipboardManager::class.java),
+                keepCase = dictionary.load().words.toSet(),
             ).insert(text)
             record(result.outcome, text.length, result.checkMs, result.retries)
             main.post {
@@ -549,6 +557,7 @@ class DictationService : AccessibilityService() {
         const val TEST_PHRASE = "Flowtype insertion test."
         private const val IDLE_RELEASE_MS = 15 * 60 * 1000L
         private const val HOLD_TO_DRAG_MS = 300L
+        private const val CONTEXT_CHARS = 80
 
         /** Set while the system has the service bound; the main screen's health line reads it. */
         @Volatile

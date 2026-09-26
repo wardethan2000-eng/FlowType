@@ -419,7 +419,10 @@ quality anyway. A cache hit costs a tenth as much, and is usually quicker.
 
 - Add a leading space if the previous character isn't whitespace or an opening
   bracket.
-- Lowercase our first letter if we're continuing a sentence mid-way.
+- Lowercase our first letter if we're continuing a sentence mid-way (unless
+  it's "I", an acronym, CamelCase or a dictionary word); capitalize it after a
+  sentence end or a line break. At the very start of a field, leave it as it
+  came, since a chat reply may be meant lowercase. (Built 2026-09-26.)
 - No trailing full stop for one-line chat messages when the per-app style says
   so.
 

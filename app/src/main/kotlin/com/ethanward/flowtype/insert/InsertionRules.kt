@@ -56,6 +56,36 @@ object InsertionRules {
     fun unchanged(before: CharSequence?, after: CharSequence?): Boolean =
         before != null && after != null && before.toString() == after.toString()
 
+    /**
+     * Fits dictated text to what's already before the cursor (PLAN §4.6 smart
+     * spacing and case): a leading space when it would glue onto a word; a
+     * capital after a sentence end; lowercase when
+     * continuing a sentence, unless the word is "I", an acronym, CamelCase or
+     * in [keepCase]. At the start of a field the text is left as it came (a
+     * chat reply may be meant lowercase). With nothing known, it's unchanged.
+     */
+    fun fitToContext(text: String, before: CharSequence?, keepCase: Set<String> = emptySet()): String {
+        if (text.isEmpty() || before == null) return text
+        val last = before.lastOrNull { !it.isWhitespace() }
+        val newLine = before.trimEnd(' ', '\t').endsWith('\n')
+        val fitted = when {
+            last == null -> text
+            newLine || last in ".!?" -> text.replaceFirstChar { it.uppercaseChar() }
+            last.isLetterOrDigit() || last in ",;:-–—" -> lowercaseFirstWord(text, keepCase)
+            else -> text
+        }
+        return withLeadingSpace(fitted, before.lastOrNull())
+    }
+
+    /** Lowercases the first word unless it must keep its capital. */
+    fun lowercaseFirstWord(text: String, keepCase: Set<String>): String {
+        val word = text.substringBefore(' ').trimEnd { !it.isLetterOrDigit() }
+        val keep = word.isEmpty() || word == "I" || word.startsWith("I'") || word.startsWith("I’") ||
+            (word.length > 1 && word.all { !it.isLetter() || it.isUpperCase() }) ||
+            word.drop(1).any { it.isUpperCase() } || word in keepCase
+        return if (keep) text else text.replaceFirstChar { it.lowercaseChar() }
+    }
+
     fun isPassword(inputType: Int): Boolean {
         val klass = inputType and InputType.TYPE_MASK_CLASS
         val variation = inputType and InputType.TYPE_MASK_VARIATION

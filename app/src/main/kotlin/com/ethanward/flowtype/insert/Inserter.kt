@@ -27,6 +27,8 @@ class Inserter(
     private val inputMethod: InputMethod,
     private val focusedField: () -> AccessibilityNodeInfo?,
     private val clipboard: ClipboardManager,
+    /** Dictionary words, which keep their capital mid-sentence. */
+    private val keepCase: Set<String> = emptySet(),
 ) {
 
     data class Result(val outcome: Outcome, val checkMs: Long, val retries: Int)
@@ -44,7 +46,7 @@ class Inserter(
         if (ic != null) {
             val before = ic.getSurroundingText(context, 0, 0)
             val beforeCursor = before?.let { textBeforeCursor(it.text, it.selectionStart) }
-            val toInsert = InsertionRules.withLeadingSpace(text, beforeCursor?.lastOrNull())
+            val toInsert = InsertionRules.fitToContext(text, beforeCursor, keepCase)
             ic.commitText(toInsert, 1, null)
 
             // commitText reports nothing; ask the app what is now before the

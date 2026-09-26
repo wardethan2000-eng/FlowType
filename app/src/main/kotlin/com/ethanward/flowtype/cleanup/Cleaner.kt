@@ -59,11 +59,12 @@ class Cleaner(private val keys: ApiKeyStore) {
         dictionary: List<String>,
         config: CleanupConfig,
         deadlineMs: Long,
+        beforeCursor: String? = null,
     ): Result {
         val key = keys.load() ?: return Result.Fallback(Reason.NO_KEY)
         // "sounds good", "on my way": already right, and instant without the network.
         if (Guards.contentWords(input).size <= SHORT_WORDS) return Result.Fallback(Reason.SHORT)
-        return request(key, input, style, dictionary, config, deadlineMs)
+        return request(key, input, style, dictionary, config, deadlineMs, beforeCursor)
     }
 
     /** The Test key button: a tiny real cleanup with a generous deadline. */
@@ -77,8 +78,9 @@ class Cleaner(private val keys: ApiKeyStore) {
         dictionary: List<String>,
         config: CleanupConfig,
         deadlineMs: Long,
+        beforeCursor: String? = null,
     ): Result {
-        val body = CleanupRequest.body(config, input, dictionary, style)
+        val body = CleanupRequest.body(config, input, dictionary, style, beforeCursor?.takeLast(80)?.ifBlank { null })
         val request = Request.Builder()
             .url(CleanupRequest.URL)
             .header("Authorization", "Bearer $key")

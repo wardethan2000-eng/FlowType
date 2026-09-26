@@ -3,6 +3,7 @@ package com.ethanward.flowtype.asr
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
+import com.ethanward.flowtype.insert.InsertionRules
 import java.io.File
 
 /** A stretch of speech in a recording, in samples. */
@@ -105,7 +106,7 @@ fun joinPieces(pieces: List<Piece>, keepCase: Set<String> = emptySet(), shortGap
         val gap = piece.span.start - before.span.end
         if (gap < shortGap && out.endsWith(".") && !out.endsWith("..")) {
             out.setLength(out.length - 1)
-            text = lowercaseFirstWord(text, keepCase)
+            text = InsertionRules.lowercaseFirstWord(text, keepCase)
         }
         out.append(' ').append(text)
         prev = piece
@@ -129,14 +130,4 @@ private fun dropRepeatedWords(sofar: CharSequence, next: String): String {
         }
     }
     return next
-}
-
-private fun lowercaseFirstWord(text: String, keepCase: Set<String>): String {
-    val first = text.substringBefore(' ')
-    val word = first.trimEnd { !it.isLetterOrDigit() }
-    val keep = word == "I" || word.startsWith("I'") || word.startsWith("I’") ||
-        (word.length > 1 && word.all { !it.isLetter() || it.isUpperCase() }) ||
-        word in keepCase || word.drop(1).any { it.isUpperCase() }
-    if (keep || word.isEmpty()) return text
-    return text.replaceFirstChar { it.lowercaseChar() }
 }

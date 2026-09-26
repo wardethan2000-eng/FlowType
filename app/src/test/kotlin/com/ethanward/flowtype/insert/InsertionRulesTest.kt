@@ -72,4 +72,25 @@ class InsertionRulesTest {
         assertFalse(InsertionRules.unchanged(null, "abc"))
         assertFalse(InsertionRules.unchanged("abc", null))
     }
+
+    @Test
+    fun continuesTheSentenceYoureIn() {
+        assertEquals(" and then we left", InsertionRules.fitToContext("And then we left", "We ate dinner"))
+        assertEquals(" and then", InsertionRules.fitToContext("And then", "We ate dinner,"))
+        assertEquals(" I think so", InsertionRules.fitToContext("I think so", "Well"))
+        assertEquals(" PETG works", InsertionRules.fitToContext("PETG works", "Maybe"))
+        assertEquals(" Bambu is fine", InsertionRules.fitToContext("Bambu is fine", "Maybe", setOf("Bambu")))
+    }
+
+    @Test
+    fun startsANewSentenceWithACapital() {
+        assertEquals(" See you then.", InsertionRules.fitToContext("see you then.", "Sounds good."))
+        assertEquals("Next line", InsertionRules.fitToContext("next line", "First line\n"))
+    }
+
+    @Test
+    fun leavesTheStartOfAFieldAndUnknownFieldsAlone() {
+        assertEquals("lol yeah", InsertionRules.fitToContext("lol yeah", ""))
+        assertEquals("Hello", InsertionRules.fitToContext("Hello", null))
+    }
 }
