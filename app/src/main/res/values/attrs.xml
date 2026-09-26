@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Lets code build tonal buttons: MaterialButton(context, null, R.attr.tonalButtonStyle). -->
+    <attr name="tonalButtonStyle" format="reference" />
+</resources>

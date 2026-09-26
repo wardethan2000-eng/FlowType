@@ -20,6 +20,8 @@ import com.ethanward.flowtype.asr.Wer
 import com.ethanward.flowtype.asr.joinSegments
 import com.ethanward.flowtype.audio.AudioCapture
 import com.ethanward.flowtype.audio.Wav
+import com.ethanward.flowtype.dictionary.DictionaryPass
+import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.google.android.material.button.MaterialButton
 import org.json.JSONArray
 import org.json.JSONObject
@@ -66,7 +68,7 @@ class BenchActivity : AppCompatActivity() {
         prefs = Prefs(this)
         recordingsDir = File(getExternalFilesDir(null), "recordings").apply { mkdirs() }
         benchDir = File(getExternalFilesDir(null), "bench").apply { mkdirs() }
-        page("ASR bench") {
+        page("Speech bench") {
             heading("Recordings")
             text("Say a sentence or two with names from your dictionary. Type what you said, so the bench can score it.")
             name = field("Name (e.g. decalforge-1)")
@@ -226,6 +228,8 @@ class BenchActivity : AppCompatActivity() {
         var errChunked = 0
         var hitsWhole = 0
         var hitsChunked = 0
+        var hitsDict = 0
+        val dictPass = DictionaryPass(DictionaryStore(this).load())
         var termTotal = 0
         var segmentsTotal = 0
         var msWhole = 0L
@@ -252,6 +256,9 @@ class BenchActivity : AppCompatActivity() {
                     .put("refWords", refW.size).put("errWhole", eW).put("wholeMs", wholeMs)
                     .put("termsWhole", hW).put("terms", total)
                 transcripts.appendText("${f.name}\t${t.model.id}\twhole\t$whole\n")
+                val (hD, _) = Wer.termHits(ref, dictPass.apply(whole).text, terms)
+                hitsDict += hD
+                row.put("termsDict", hD)
                 if (segmenter != null) {
                     s = SystemClock.elapsedRealtime()
                     val spans = segmenter.split(samples).map {
@@ -275,8 +282,9 @@ class BenchActivity : AppCompatActivity() {
         }
         result.put("recordings", scored.size).put("audioMs", audioMs).put("refWords", refWords)
             .put("werWhole", errWhole.toDouble() / refWords).put("termHitsWhole", hitsWhole)
-            .put("termTotal", termTotal).put("decodeWholeMs", msWhole).put("perRecording", per)
-        log("whole: WER %.1f%%, terms %d/%d, %d ms for %.1f s".format(100.0 * errWhole / refWords, hitsWhole, termTotal, msWhole, audioMs / 1000.0))
+            .put("termTotal", termTotal).put("termHitsDict", hitsDict).put("decodeWholeMs", msWhole).put("perRecording", per)
+        log("whole: WER %.1f%%, terms %d/%d (%d/%d after the dictionary), %d ms for %.1f s".format(
+            100.0 * errWhole / refWords, hitsWhole, termTotal, hitsDict, termTotal, msWhole, audioMs / 1000.0))
         if (segmenter != null) {
             result.put("werChunked", errChunked.toDouble() / refWords).put("termHitsChunked", hitsChunked)
                 .put("segments", segmentsTotal).put("decodeChunkedMs", msChunked)

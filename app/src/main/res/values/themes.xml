@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- The full color scheme is generated from colorPrimary at startup
+         (FlowtypeApp, DynamicColors with a content-based seed). -->
     <style name="Theme.Flowtype" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
+        <item name="tonalButtonStyle">@style/Widget.Material3.Button.TonalButton</item>
         <item name="android:windowLightStatusBar">@bool/light_system_bars</item>
         <item name="android:windowLightNavigationBar">@bool/light_system_bars</item>
     </style>

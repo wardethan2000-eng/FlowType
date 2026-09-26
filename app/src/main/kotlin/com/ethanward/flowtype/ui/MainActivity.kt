@@ -4,49 +4,60 @@ import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.provider.Settings
-import android.view.WindowManager
+import android.view.Gravity
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.ethanward.flowtype.Prefs
-import com.ethanward.flowtype.asr.AsrModel
+import com.ethanward.flowtype.R
 import com.ethanward.flowtype.asr.AsrModels
 import com.ethanward.flowtype.asr.ModelStore
+import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.ethanward.flowtype.service.DictationService
-import kotlin.concurrent.thread
+import com.google.android.material.R as M
+import com.google.android.material.card.MaterialCardView
 
-/** Setup and status: service, microphone, speech models, developer screens. */
+/**
+ * Home: a status card that says "Ready" or lists what's missing with a button
+ * for each, then the settings.
+ */
 class MainActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
     private lateinit var store: ModelStore
-    private lateinit var health: TextView
-    private lateinit var models: LinearLayout
-    private val progress = HashMap<String, String>()
-    private val statusLines = HashMap<String, TextView>()
-    private var downloads = 0
+    private lateinit var status: MaterialCardView
+    private lateinit var dictionarySummary: TextView
+    private lateinit var modelSummary: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
         store = ModelStore(this)
-        page("Flowtype") {
-            health = text()
-            row {
-                button("Accessibility settings") { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-                button("Allow microphone") { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1) }
+        page("Flowtype", up = false) {
+            status = card { }
+            section("Settings")
+            card(padded = false) {
+                dictionarySummary = navRow("Dictionary") { open(DictionaryActivity::class.java) }
+                divider()
+                modelSummary = navRow("Speech model") { open(ModelsActivity::class.java) }
+                divider()
+                navRow("Mic button", "Hold it to drag it anywhere. Tap here to put it back above the keyboard.") {
+                    prefs.resetButtonPosition()
+                    Toast.makeText(this@MainActivity, "The mic button goes back above the keyboard", Toast.LENGTH_SHORT).show()
+                }
             }
-            text("Hold the mic button for a moment to drag it somewhere else.")
-            button("Reset button position") { prefs.resetButtonPosition() }
-            heading("Speech models")
-            text("Downloaded over the internet once, then everything runs on this phone.")
-            models = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            addView(models)
-            heading("Developer")
-            button("ASR bench") { startActivity(Intent(this@MainActivity, BenchActivity::class.java)) }
-            button("Insertion test") { startActivity(Intent(this@MainActivity, InsertionTestActivity::class.java)) }
-            button("Cleanup timing") { startActivity(Intent(this@MainActivity, CleanupTestActivity::class.java)) }
+            section("Developer")
+            card(padded = false) {
+                navRow("Developer tools", "Speech bench, insertion test, cleanup timing") { open(DeveloperActivity::class.java) }
+            }
+            text("Speech is turned into text on this phone. Your voice never leaves it.", secondary = true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(16), dp(16), 0)
+            }
         }
     }
 
@@ -60,88 +71,76 @@ class MainActivity : AppCompatActivity() {
         refresh()
     }
 
+    private fun open(screen: Class<*>) = startActivity(Intent(this, screen))
+
     private fun refresh() {
+        val model = AsrModels.byId(prefs.modelId) ?: AsrModels.DEFAULT
+        modelSummary.text = model.label + if (store.isInstalled(model)) "" else " · not downloaded"
+        val d = DictionaryStore(this).load()
+        dictionarySummary.text = if (d.isEmpty) "Names and words Flowtype should spell your way"
+        else listOf(
+            d.words.size.takeIf { it > 0 }?.let { "$it word" + if (it == 1) "" else "s" },
+            d.replacements.size.takeIf { it > 0 }?.let { "$it replacement" + if (it == 1) "" else "s" },
+        ).filterNotNull().joinToString(" · ")
+        renderStatus(model.label, store.isInstalled(model))
+    }
+
+    private fun renderStatus(modelLabel: String, modelReady: Boolean) {
         val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
             ?.split(':')?.any { ComponentName.unflattenFromString(it)?.className == DictationService::class.java.name } == true
         val connected = DictationService.instance != null
         val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        val model = AsrModels.byId(prefs.modelId) ?: AsrModels.DEFAULT
-        health.text = listOf(
-            "Service: " + when {
-                connected -> "on"
-                enabled -> "turned on, not connected yet"
-                else -> "off (turn on Flowtype in Accessibility settings)"
-            },
-            "Microphone: " + if (mic) "allowed" else "not allowed",
-            "Dictation model: ${model.label}" + if (store.isInstalled(model)) "" else " (not downloaded)",
-        ).joinToString("\n")
-        renderModels()
-    }
 
-    /** Rebuilt only when a model's state changes; progress just updates its line. */
-    private fun renderModels() {
-        models.removeAllViews()
-        statusLines.clear()
-        for (m in AsrModels.ALL) {
-            val installed = store.isInstalled(m)
-            val selected = prefs.modelId == m.id
-            statusLines[m.id] = models.text(modelLine(m))
-            models.row {
-                if (!installed) button("Download") { install(m) }.isEnabled = progress[m.id] == null
-                else {
-                    button("Use for dictation") { prefs.modelId = m.id; refresh() }.isEnabled = !selected
-                    button("Delete") { store.delete(m); refresh() }
+        val todo = buildList {
+            if (!enabled) add("Turn on Flowtype in Accessibility settings." to ("Open settings" to ::openAccessibility))
+            else if (!connected) add("Flowtype is on but not running. Turn it off and on again." to ("Open settings" to ::openAccessibility))
+            if (!mic) add("Allow Flowtype to use the microphone." to ("Allow" to ::askForMic))
+            if (!modelReady) add("Download the speech model ($modelLabel)." to ("Models" to { open(ModelsActivity::class.java) }))
+        }
+
+        val column = status.column
+        column.removeAllViews()
+        val ready = todo.isEmpty()
+        status.setCardBackgroundColor(themeColor(if (ready) M.attr.colorPrimaryContainer else M.attr.colorSurfaceContainerHigh))
+        val onColor = themeColor(if (ready) M.attr.colorOnPrimaryContainer else M.attr.colorOnSurface)
+        column.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            if (ready) addView(ImageView(context).apply {
+                setImageResource(R.drawable.ic_check_circle)
+                imageTintList = ColorStateList.valueOf(onColor)
+            }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(12) })
+            addView(TextView(context).apply {
+                text = if (ready) "Ready" else "Finish setting up"
+                setTextAppearance(M.style.TextAppearance_Material3_TitleLarge)
+                setTextColor(onColor)
+            })
+        })
+        if (ready) {
+            column.text("Tap the mic above your keyboard in any app, speak, then tap ✓.").setTextColor(onColor)
+            return
+        }
+        for ((message, action) in todo) {
+            column.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(12), 0, 0)
+                addView(TextView(context).apply {
+                    text = message
+                    setTextAppearance(M.style.TextAppearance_Material3_BodyLarge)
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                val b = com.google.android.material.button.MaterialButton(context, null, R.attr.tonalButtonStyle).apply {
+                    text = action.first
+                    setOnClickListener { action.second() }
                 }
-            }
-        }
-        statusLines["vad"] = models.text(vadLine())
-        if (!store.isVadInstalled()) {
-            models.button("Download VAD") { installVad() }.isEnabled = progress["vad"] == null
-        }
-    }
-
-    private fun modelLine(m: AsrModel) = "${m.label}\n${m.bytes / 1_000_000} MB download · " +
-        (progress[m.id] ?: if (store.isInstalled(m)) "downloaded" else "not downloaded") +
-        if (prefs.modelId == m.id) " · used for dictation" else ""
-
-    private fun vadLine() = "Silero VAD (for the bench's chunked decoding) · " +
-        (progress["vad"] ?: if (store.isVadInstalled()) "downloaded" else "not downloaded")
-
-    private fun showProgress(key: String) {
-        val line = statusLines[key] ?: return
-        line.text = AsrModels.byId(key)?.let(::modelLine) ?: vadLine()
-    }
-
-    private fun install(m: AsrModel) = background(m.id) { report -> store.install(m, report) }
-
-    private fun installVad() = background("vad") { report -> store.installVad(report) }
-
-    private fun background(key: String, work: ((Long, Long) -> Unit) -> Unit) {
-        progress[key] = "starting…"
-        keepScreenOn(+1)
-        renderModels()
-        thread(name = "flowtype-download") {
-            val result = runCatching {
-                work { done, total ->
-                    val text = if (done < 0) "unpacking…" else "${done * 100 / total}% downloaded"
-                    runOnUiThread {
-                        progress[key] = text
-                        showProgress(key)
-                    }
-                }
-            }
-            runOnUiThread {
-                progress.remove(key)
-                keepScreenOn(-1)
-                refresh()
-                result.exceptionOrNull()?.let { health.append("\nDownload failed: ${it.message}") }
-            }
+                addView(b, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = dp(12)
+                })
+            })
         }
     }
 
-    private fun keepScreenOn(delta: Int) {
-        downloads += delta
-        if (downloads > 0) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-    }
+    private fun openAccessibility() = startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+
+    private fun askForMic() = requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
 }

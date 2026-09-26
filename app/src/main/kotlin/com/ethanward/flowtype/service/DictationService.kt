@@ -29,6 +29,8 @@ import com.ethanward.flowtype.asr.Transcriber
 import com.ethanward.flowtype.audio.AudioCapture
 import com.ethanward.flowtype.audio.SignalStats
 import com.ethanward.flowtype.audio.Wav
+import com.ethanward.flowtype.dictionary.DictionaryPass
+import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.ethanward.flowtype.insert.Inserter
 import com.ethanward.flowtype.insert.InsertionLog
 import com.ethanward.flowtype.insert.InsertionRecord
@@ -39,8 +41,9 @@ import java.util.concurrent.Executors
 /**
  * The dictation service. Its own input method (flagInputMethodEditor) tells it
  * when a text field takes input; the button shows while that field is live and
- * the keyboard window is up. Tap: record. Tap again: decode on the phone and
- * commitText at the cursor (PLAN §4.1, §4.6). No cleanup yet (Phase 0).
+ * the keyboard window is up. Tap: listen. ✓: decode on the phone, apply the
+ * dictionary, and commitText at the cursor (PLAN §4.1, §4.4, §4.6). ✕: discard.
+ * No AI cleanup yet.
  *
  * All fields are touched on the main thread, except [transcriber] (asr thread).
  */
@@ -52,6 +55,7 @@ class DictationService : AccessibilityService() {
     private lateinit var prefs: Prefs
     private lateinit var store: ModelStore
     private lateinit var log: InsertionLog
+    private lateinit var dictionary: DictionaryStore
     private lateinit var windowManager: WindowManager
 
     private var button: MicButton? = null
@@ -79,6 +83,7 @@ class DictationService : AccessibilityService() {
         prefs = Prefs(this)
         store = ModelStore(this)
         log = InsertionLog(this)
+        dictionary = DictionaryStore(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         instance = this
         Trace.event("service_connected")
@@ -328,13 +333,18 @@ class DictationService : AccessibilityService() {
             val text = runCatching {
                 val (t, loadMs) = loadModel()
                 val started = SystemClock.elapsedRealtime()
-                val text = t.decode(samples)
+                val heard = t.decode(samples)
+                val decodeMs = SystemClock.elapsedRealtime() - started
+                val dict = DictionaryPass(dictionary.load()).apply(heard)
+                val text = dict.text
                 Trace.event(
                     "dictation", "app" to field.packageName, "model" to t.model.id,
                     "audioMs" to samples.size / 16, "peak" to "%.4f".format(stats.peak),
                     "rms" to "%.4f".format(stats.rms), "zeroPct" to "%.1f".format(stats.zeroFraction * 100),
                     "silent" to stats.silent, "loadMs" to loadMs,
-                    "decodeMs" to SystemClock.elapsedRealtime() - started, "chars" to text.length,
+                    "decodeMs" to decodeMs, "chars" to text.length,
+                    "replaced" to dict.replaced, "respelled" to dict.respelled,
+                    "dictMs" to SystemClock.elapsedRealtime() - started - decodeMs,
                 )
                 text
             }.getOrElse {

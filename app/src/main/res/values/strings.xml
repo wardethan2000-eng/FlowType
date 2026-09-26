@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Flowtype</string>
     <string name="accessibility_description">Shows a mic button above your keyboard. Tap it, speak, tap again, and Flowtype types what you said at the cursor. Speech is transcribed on this phone. Flowtype never reads or stores the text in your fields.</string>
-    <string name="bench_title">ASR bench</string>
+    <string name="bench_title">Speech bench</string>
     <string name="insertion_test_title">Insertion test</string>
     <string name="cleanup_test_title">Cleanup timing</string>
 </resources>
