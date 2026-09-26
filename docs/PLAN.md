@@ -290,8 +290,10 @@ Fuzzy matching for words (Phase 2): a phonetic key plus edit distance on
 1–3-word windows, only for Word entries, only when confidence is high. This is
 what makes names come out right with **no** network. Built 2026-09-26 as
 `SoundsLike`: a simplified Metaphone key (not Double Metaphone) must match
-exactly *and* the letters must be within 40% edit distance; Words under 5
-letters and acronyms are excluded ("cat" must never become "Kate"). A switch on
+exactly *and* the letters must be within 40% edit distance. Words under 5
+letters only match one heard word that's identical once doubled letters
+collapse ("Allan" → "Alan", found in use 2026-09-26); "cat" must never become
+"Kate". Acronyms are excluded. A switch on
 the Dictionary screen turns it off.
 
 **Auto-learn** (Phase 3): after inserting, watch that field for ~30 s through

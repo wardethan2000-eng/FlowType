@@ -74,8 +74,8 @@ class DictionaryActivity : AppCompatActivity() {
                         updateTry()
                     }
                 })
-                text("\"bamboo\" → \"Bambu\", \"deck all forge\" → \"DecalForge\". Only for words of 5+ letters " +
-                    "that aren't acronyms.", secondary = true).setPadding(dp(16), 0, dp(16), dp(12))
+                text("\"bamboo\" → \"Bambu\", \"deck all forge\" → \"DecalForge\". Short words only catch " +
+                    "doubled letters (\"Allan\" → \"Alan\"); acronyms never change.", secondary = true).setPadding(dp(16), 0, dp(16), dp(12))
             }
             section("Replacements")
             val repCard = card(padded = false) { }

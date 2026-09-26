@@ -8,17 +8,32 @@ package com.ethanward.flowtype.dictionary
  * A heard stretch of 1–3 words matches a Word only when both hold:
  * - the same sound key (a simplified Metaphone), and
  * - letters within 40% edit distance of the Word's.
- * Words under 5 letters and acronyms ("PETG", read out as letters) are never
- * matched this way; they'd turn ordinary words into names.
+ * Words under 5 letters get only a narrow match: one heard word that's the
+ * same once doubled letters are collapsed ("Allan" → "Alan"); the sound match
+ * would turn ordinary words into names ("cat" → "Kate"). Acronyms ("PETG",
+ * read out as letters) are never matched this way.
  */
 object SoundsLike {
     const val MIN_LETTERS = 5
 
     fun eligible(word: String): Boolean {
         val letters = letters(word)
-        if (letters.length < MIN_LETTERS) return false
+        if (letters.length < 3) return false
         val isAcronym = word.filter { it.isLetter() }.all { it.isUpperCase() }
         return !isAcronym
+    }
+
+    /** "allan" → "alan": runs of the same letter become one. */
+    fun collapsed(s: String): String {
+        val out = StringBuilder()
+        for (c in letters(s)) if (out.lastOrNull() != c) out.append(c)
+        return out.toString()
+    }
+
+    /** The only match short Words get: one word, same letters once doubles collapse. */
+    fun matchesShort(heard: String, word: String): Boolean {
+        val a = letters(heard)
+        return a != letters(word) && collapsed(a) == collapsed(word)
     }
 
     fun letters(s: String) = s.lowercase().filter { it in 'a'..'z' }
@@ -27,6 +42,7 @@ object SoundsLike {
         val a = letters(heard)
         val b = letters(word)
         if (a.isEmpty() || a == b) return false
+        if (b.length < MIN_LETTERS) return false
         val key = key(b)
         if (key.length < 2 || key(a) != key) return false
         return distance(a, b) <= maxOf(1, (b.length * 0.4).toInt())
@@ -101,7 +117,8 @@ object SoundsLike {
                 val gapOk = (i until i + n - 1).all { k -> text.substring(tokens[k].range.last + 1, tokens[k + 1].range.first).isBlank() }
                 if (!gapOk) continue
                 val heard = tokens.subList(i, i + n).joinToString("") { it.value }
-                val word = targets.firstOrNull { matches(heard, it) } ?: continue
+                val word = targets.firstOrNull { matches(heard, it) || (n == 1 && letters(it).length < MIN_LETTERS && matchesShort(heard, it)) }
+                    ?: continue
                 hit = n to word
                 break
             }

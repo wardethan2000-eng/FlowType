@@ -52,4 +52,14 @@ class SoundsLikeTest {
         assertEquals("the bamboo", DictionaryPass(d).apply("the bamboo").text)
         assertEquals("the Bambu", DictionaryPass(d, soundsLike = true).apply("the bamboo").text)
     }
+
+    @Test
+    fun shortNamesCatchDoubledLetters() {
+        val names = listOf("Alan", "Kate")
+        assertEquals("Alan said hi to Alan", SoundsLike.apply("Allan said hi to allan", names).first)
+        // Different names, and joined words, stay as heard.
+        assertEquals("Allen and Ellen", SoundsLike.apply("Allen and Ellen", names).first)
+        assertEquals("all an hour", SoundsLike.apply("all an hour", names).first)
+        assertEquals("the cat", SoundsLike.apply("the cat", names).first)
+    }
 }
