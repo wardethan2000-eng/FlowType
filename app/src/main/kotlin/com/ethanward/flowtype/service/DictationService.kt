@@ -98,6 +98,9 @@ class DictationService : AccessibilityService() {
     private var session = 0
     private var keyboardTop: Int? = null
     private var fieldBounds: Rect? = null
+    private var fieldBoundsSession = -1
+    private val settleCheck = Runnable { refreshKeyboard() }
+    private var lastPlacement = ""
 
     private var capture: AudioCapture? = null
     private var dictationSession = -1
@@ -329,12 +332,27 @@ class DictationService : AccessibilityService() {
     private fun refreshKeyboard() {
         val ime = runCatching { windows }.getOrDefault(emptyList())
             .firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
-        keyboardTop = ime?.let { w -> Rect().also { w.getBoundsInScreen(it) }.takeIf { !it.isEmpty }?.top }
+        val newTop = ime?.let { w -> Rect().also { w.getBoundsInScreen(it) }.takeIf { !it.isEmpty }?.top }
+        // The keyboard slides in: look again once it has settled.
+        if (newTop != null && newTop != keyboardTop) {
+            main.removeCallbacks(settleCheck)
+            main.postDelayed(settleCheck, 150)
+            main.postDelayed(settleCheck, 400)
+        }
+        keyboardTop = newTop
         // Where the focused text box is (bounds only), so the button can sit above
-        // a chat's compose bar instead of over it.
-        fieldBounds = if (keyboardTop == null) null else runCatching {
+        // a chat's compose bar instead of over it. Some apps (Claude's) briefly
+        // report no focused field while redrawing: keep the last position seen
+        // in this same input session rather than dropping onto the keyboard.
+        val found = if (newTop == null) null else runCatching {
             findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { n -> Rect().also { n.getBoundsInScreen(it) }.takeIf { !it.isEmpty } }
         }.getOrNull()
+        fieldBounds = when {
+            newTop == null -> null
+            found != null -> found.also { fieldBoundsSession = session }
+            fieldBoundsSession == session -> fieldBounds
+            else -> null
+        }
         updateButton()
     }
 
@@ -391,6 +409,15 @@ class DictationService : AccessibilityService() {
                         it, window, fieldBounds?.top, fieldBounds?.bottom,
                         nearGap = (NEAR_KEYBOARD_DP * density).toInt(), maxBoxHeight = (MAX_BOX_DP * density).toInt(),
                     )
+                    // Placement diagnosis (numbers only), once per change.
+                    val sig = "$it/${fieldBounds?.top}/${fieldBounds?.bottom}/${p.y}"
+                    if (sig != lastPlacement) {
+                        lastPlacement = sig
+                        Trace.event(
+                            "placement", "app" to editor?.packageName, "keyboardTop" to it,
+                            "fieldTop" to fieldBounds?.top, "fieldBottom" to fieldBounds?.bottom, "buttonY" to p.y,
+                        )
+                    }
                 }
             }
             val bounds = windowManager.currentWindowMetrics.bounds
