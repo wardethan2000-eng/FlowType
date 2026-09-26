@@ -9,7 +9,10 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import com.ethanward.flowtype.R
 
-/** The plain Phase 0 button: a dark circle with a mic; red while recording. */
+/**
+ * The plain Phase 0 button: a dark circle with a mic, see-through while idle so
+ * it hides less of the app; solid red while recording.
+ */
 class MicButton(context: Context) : FrameLayout(context) {
     enum class State { IDLE, RECORDING, BUSY }
 
@@ -21,6 +24,8 @@ class MicButton(context: Context) : FrameLayout(context) {
         indeterminateTintList = ColorStateList.valueOf(0xFFFFFFFF.toInt())
     }
     private val face = FrameLayout(context)
+    private var state = State.IDLE
+    private var dragging = false
 
     init {
         val size = dp(SIZE_DP)
@@ -35,6 +40,8 @@ class MicButton(context: Context) : FrameLayout(context) {
     }
 
     fun setState(state: State) {
+        this.state = state
+        updateAlpha()
         val color = when (state) {
             State.IDLE -> R.color.button_idle
             State.RECORDING -> R.color.button_recording
@@ -52,6 +59,16 @@ class MicButton(context: Context) : FrameLayout(context) {
         if (state != State.RECORDING) setLevel(0f)
     }
 
+    /** Solid while it's being moved, so you can see where it goes. */
+    fun setDragging(on: Boolean) {
+        dragging = on
+        updateAlpha()
+    }
+
+    private fun updateAlpha() {
+        face.alpha = if (state == State.IDLE && !dragging) IDLE_ALPHA else 1f
+    }
+
     /** Pulses with the voice: [rms] of the last 30 ms, 0..1. */
     fun setLevel(rms: Float) {
         val scale = 1f + minOf(0.18f, rms * 3f)
@@ -65,5 +82,6 @@ class MicButton(context: Context) : FrameLayout(context) {
         const val SIZE_DP = 52
         /** The window around the circle leaves room for the pulse and shadow. */
         const val WINDOW_DP = 68
+        const val IDLE_ALPHA = 0.5f
     }
 }

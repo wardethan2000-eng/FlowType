@@ -37,6 +37,8 @@ class MainActivity : AppCompatActivity() {
                 button("Accessibility settings") { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                 button("Allow microphone") { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1) }
             }
+            text("Hold the mic button for a moment to drag it somewhere else.")
+            button("Reset button position") { prefs.resetButtonPosition() }
             heading("Speech models")
             text("Downloaded over the internet once, then everything runs on this phone.")
             models = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }

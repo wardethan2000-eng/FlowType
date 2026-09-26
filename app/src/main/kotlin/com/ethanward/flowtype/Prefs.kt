@@ -19,4 +19,21 @@ class Prefs(context: Context) {
     var asrThreads: Int
         get() = prefs.getInt("asr_threads", 4)
         set(value) = prefs.edit().putInt("asr_threads", value).apply()
+
+    /** Where the button was dragged to, per orientation; null = just above the keyboard. */
+    fun buttonPosition(landscape: Boolean): Pair<Int, Int>? {
+        val key = if (landscape) "button_land" else "button_port"
+        if (!prefs.contains("${key}_x")) return null
+        return prefs.getInt("${key}_x", 0) to prefs.getInt("${key}_y", 0)
+    }
+
+    fun setButtonPosition(landscape: Boolean, x: Int, y: Int) {
+        val key = if (landscape) "button_land" else "button_port"
+        prefs.edit().putInt("${key}_x", x).putInt("${key}_y", y).apply()
+    }
+
+    fun resetButtonPosition() {
+        prefs.edit().remove("button_port_x").remove("button_port_y")
+            .remove("button_land_x").remove("button_land_y").apply()
+    }
 }

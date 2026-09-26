@@ -5,6 +5,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.InputMethod
 import android.content.ComponentCallbacks2
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Handler
@@ -12,6 +13,9 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
@@ -144,7 +148,7 @@ class DictationService : AccessibilityService() {
             return
         }
         val b = button ?: MicButton(this).also { v ->
-            v.setOnClickListener { onTap() }
+            v.setOnTouchListener(DragOrTap())
             button = v
         }
         val density = resources.displayMetrics.density
@@ -158,18 +162,95 @@ class DictationService : AccessibilityService() {
             PixelFormat.TRANSLUCENT,
         ).also {
             it.gravity = Gravity.TOP or Gravity.END
-            it.x = (8 * density).toInt()
             params = it
         }
-        // Just above the keyboard, at the right edge. While recording with the
-        // keyboard gone, stay where we were.
-        keyboardTop?.let { p.y = it - window }
+        // Where it was last dragged to; otherwise just above the keyboard at the
+        // right edge. While recording with the keyboard gone, stay put.
+        if (!dragging) {
+            val saved = prefs.buttonPosition(isLandscape())
+            if (saved != null) {
+                val bounds = windowManager.currentWindowMetrics.bounds
+                val (x, y) = ButtonPlacement.clamp(saved.first, saved.second, window, bounds.width(), bounds.height())
+                p.x = x
+                p.y = y
+            } else {
+                p.x = (8 * density).toInt()
+                keyboardTop?.let { p.y = it - window }
+            }
+        }
         b.setState(state)
         if (attached) windowManager.updateViewLayout(b, p) else {
             windowManager.addView(b, p)
             attached = true
         }
     }
+
+    private fun isLandscape() =
+        resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    private var dragging = false
+
+    /**
+     * A tap dictates. Holding for a moment picks the button up; it then follows
+     * the finger and stays where it's dropped (per orientation).
+     */
+    private inner class DragOrTap : View.OnTouchListener {
+        private var downX = 0f
+        private var downY = 0f
+        private var startX = 0
+        private var startY = 0
+        private var moved = false
+        private val pickUp = Runnable {
+            dragging = true
+            button?.setDragging(true)
+            button?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        }
+
+        override fun onTouch(v: View, e: MotionEvent): Boolean {
+            val p = params ?: return false
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.rawX
+                    downY = e.rawY
+                    startX = p.x
+                    startY = p.y
+                    moved = false
+                    main.postDelayed(pickUp, HOLD_TO_DRAG_MS)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = e.rawX - downX
+                    val dy = e.rawY - downY
+                    if (dragging) {
+                        val bounds = windowManager.currentWindowMetrics.bounds
+                        val (x, y) = ButtonPlacement.dragged(startX, startY, dx, dy)
+                        val (cx, cy) = ButtonPlacement.clamp(x, y, p.width, bounds.width(), bounds.height())
+                        p.x = cx
+                        p.y = cy
+                        windowManager.updateViewLayout(v, p)
+                    } else if (!moved && dx * dx + dy * dy > slop * slop) {
+                        // Slid off before the hold: neither a tap nor a drag.
+                        moved = true
+                        main.removeCallbacks(pickUp)
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    main.removeCallbacks(pickUp)
+                    if (dragging) {
+                        dragging = false
+                        button?.setDragging(false)
+                        prefs.setButtonPosition(isLandscape(), p.x, p.y)
+                        Trace.event("button_moved", "landscape" to isLandscape())
+                    } else if (!moved && e.actionMasked == MotionEvent.ACTION_UP) {
+                        v.performClick()
+                        onTap()
+                    }
+                }
+            }
+            return true
+        }
+    }
+
+    private val slop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
 
     private fun setState(s: MicButton.State) {
         state = s
@@ -332,6 +413,7 @@ class DictationService : AccessibilityService() {
     companion object {
         const val TEST_PHRASE = "Flowtype insertion test."
         private const val IDLE_RELEASE_MS = 15 * 60 * 1000L
+        private const val HOLD_TO_DRAG_MS = 300L
 
         /** Set while the system has the service bound; the main screen's health line reads it. */
         @Volatile
