@@ -89,4 +89,13 @@ class Prefs(context: Context) {
     var buttonFollowsKeyboard: Boolean
         get() = prefs.getBoolean("button_follows_keyboard", false)
         set(value) = prefs.edit().putBoolean("button_follows_keyboard", value).apply()
+
+    /**
+     * Transcribe while you talk (PLAN §4.3 live chunking). Off by default
+     * since 2026-09-26: dictations with pauses came out with words missing on
+     * the phone, while the same code was fine on test audio. Under diagnosis.
+     */
+    var liveChunking: Boolean
+        get() = prefs.getBoolean("live_chunking", false)
+        set(value) = prefs.edit().putBoolean("live_chunking", value).apply()
 }

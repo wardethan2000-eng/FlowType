@@ -48,8 +48,14 @@ class ModelsActivity : AppCompatActivity() {
         list.section("Pause detector")
         list.card {
             heading("Silero VAD")
-            text("Finds the pauses in your speech, so Flowtype can transcribe while you talk. Without it, " +
-                "everything is transcribed after you tap ✓.", secondary = true)
+            text("Finds the pauses in your speech, so Flowtype can transcribe while you talk.", secondary = true)
+            addView(com.google.android.material.materialswitch.MaterialSwitch(context).apply {
+                text = "Transcribe while I talk (testing)"
+                isChecked = prefs.liveChunking
+                setOnCheckedChangeListener { _, on -> prefs.liveChunking = on }
+            })
+            text("Off: everything is transcribed after you tap ✓, a little slower but reliable. " +
+                "On: quicker, but dictations with pauses are losing words right now.", secondary = true)
             progressAndActions("vad", store.isVadInstalled(), AsrModels.VAD_BYTES) {
                 if (!store.isVadInstalled()) button("Download", ButtonKind.TONAL) {
                     Downloads.start("vad") { report -> store.installVad(report) }

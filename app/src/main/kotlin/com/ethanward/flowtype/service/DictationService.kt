@@ -94,6 +94,8 @@ class DictationService : AccessibilityService() {
     private var transcriber: Transcriber? = null
     /** asr thread only: the live chunker for the dictation in progress. */
     private var chunker: LiveChunker? = null
+    @Volatile private var acceptErrors = 0
+    @Volatile private var recordingStartedAt = 0L
 
     private val releaseIdleModel = Runnable { asr.execute { unloadModel("idle") } }
     private val refreshKeyboard = Runnable { refreshKeyboard() }
@@ -379,14 +381,22 @@ class DictationService : AccessibilityService() {
             return false
         }
         // Transcribe while you talk when the pause detector is there (PLAN §4.3).
-        val live = store.isVadInstalled()
+        val live = prefs.liveChunking && store.isVadInstalled()
+        acceptErrors = 0
+        recordingStartedAt = SystemClock.elapsedRealtime()
         asr.execute {
             chunker?.release()
             chunker = if (live) runCatching { LiveChunker(store.vadFile()) { loadModel().first.decode(it) } }.getOrNull() else null
         }
         val cap = AudioCapture(
             onLevel = { level -> main.post { if (state == MicButton.State.RECORDING) button?.setLevel(level) } },
-            onFrame = if (live) { frame -> asr.execute { runCatching { chunker?.accept(frame) } } } else null,
+            onFrame = if (live) { frame ->
+                asr.execute {
+                    runCatching { chunker?.accept(frame) }.onFailure {
+                        if (acceptErrors++ == 0) Trace.warn("live_accept_failed", "error" to it.javaClass.simpleName)
+                    }
+                }
+            } else null,
         )
         if (!cap.start()) {
             asr.execute { dropChunker() }
@@ -439,6 +449,16 @@ class DictationService : AccessibilityService() {
                 // Live: only the unfinished tail is left to decode. Otherwise the whole thing.
                 val chunked = live?.let { c -> runCatching { c.finish() }.also { c.release() }.getOrNull() }
                 val heard = chunked?.let { joinPieces(it.pieces, keepCase = dict.words.toSet()) } ?: t.decode(samples)
+                if (chunked != null && live != null) {
+                    // Diagnosis of live chunking: where each piece is and how much text it gave;
+                    // whether the chunker got every captured sample. Numbers only.
+                    Trace.event(
+                        "live_pieces",
+                        "pieces" to chunked.pieces.joinToString(",") { "${it.span.start / 16}-${it.span.end / 16}ms:${it.text.length}c" },
+                        "capturedMs" to samples.size / 16, "fedMs" to live.samplesIn / 16,
+                        "wallMs" to stoppedAt - recordingStartedAt, "acceptErrors" to acceptErrors,
+                    )
+                }
                 val decodeMs = SystemClock.elapsedRealtime() - started
                 val result = pass.apply(SpokenCommands.apply(heard))
                 Trace.event(

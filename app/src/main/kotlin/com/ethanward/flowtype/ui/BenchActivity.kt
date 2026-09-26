@@ -278,6 +278,28 @@ class BenchActivity : AppCompatActivity() {
                     hitsChunked += hC
                     row.put("segments", spans.size).put("errChunked", eC).put("chunkedMs", chunkMs).put("termsChunked", hC)
                     transcripts.appendText("${f.name}\t${t.model.id}\tchunked\t$chunked\n")
+
+                    // The exact live path: 30 ms frames through LiveChunker, as the mic delivers them.
+                    val pcm = ShortArray(samples.size) { (samples[it] * 32767f).toInt().coerceIn(-32768, 32767).toShort() }
+                    val live = LiveChunker(store.vadFile()) { t.decode(it) }
+                    val liveResult = try {
+                        var at = 0
+                        while (at < pcm.size) {
+                            val n = minOf(480, pcm.size - at)
+                            live.accept(pcm.copyOfRange(at, at + n))
+                            at += n
+                        }
+                        live.finish()
+                    } finally {
+                        live.release()
+                    }
+                    val liveText = joinPieces(liveResult.pieces, keepCase = keepCase)
+                    val eL = Wer.errors(refW, Wer.words(liveText))
+                    row.put("errLive", eL).put("livePieces", liveResult.pieces.size)
+                    transcripts.appendText("${f.name}\t${t.model.id}\tlive\t$liveText\n")
+                    for (piece in liveResult.pieces) {
+                        transcripts.appendText("${f.name}\t${t.model.id}\tpiece ${piece.span.start / 16}-${piece.span.end / 16} ms\t${piece.text}\n")
+                    }
                 }
                 per.put(row)
             }

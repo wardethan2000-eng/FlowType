@@ -17,6 +17,8 @@ class LiveChunker(vadModel: File, private val decode: (FloatArray) -> String) {
     private var audio = FloatArray(Wav.RATE * 30)
     private var size = 0
     private var fed = 0
+    /** Samples handed to [accept]; compared with what the mic captured, to catch lost frames. */
+    val samplesIn: Int get() = size
     private val pieces = ArrayList<Piece>()
     /** Time spent decoding pieces while recording. */
     var decodedWhileRecordingMs = 0L
