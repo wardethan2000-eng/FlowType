@@ -295,6 +295,13 @@ class DictationService : AccessibilityService() {
         noteCapture = null
         val pcm = cap.stop()
         otherAudio.resume()
+        // Under a second isn't a note, it's a slip of the thumb: don't save or title it.
+        if (pcm.size < MIN_NOTE_SAMPLES) {
+            removeNoteOverlay()
+            Trace.event("note_too_short", "audioMs" to pcm.size / 16)
+            toast("Too short, so no note was saved")
+            return
+        }
         noteOverlay?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         noteOverlay?.setState(MicButton.State.BUSY)
         asr.execute {
@@ -960,6 +967,7 @@ class DictationService : AccessibilityService() {
         private const val HOLD_TO_DRAG_MS = 300L
         private const val HOLD_TO_TALK_MS = 350L
         private const val CANCEL_SLIDE_DP = 100
+        private const val MIN_NOTE_SAMPLES = 16_000 // 1 s
         /** A text box whose bottom is this close to the keyboard counts as sitting on it. */
         private const val NEAR_KEYBOARD_DP = 120
         /** Taller than this, a box is a page (notes, email body), not a compose bar. */
