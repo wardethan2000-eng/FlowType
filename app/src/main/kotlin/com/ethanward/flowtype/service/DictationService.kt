@@ -379,7 +379,7 @@ class DictationService : AccessibilityService() {
             val samples = Wav.toFloats(pcm)
             val stats = SignalStats.of(samples)
             val dict = dictionary.load()
-            val pass = DictionaryPass(dict)
+            val pass = DictionaryPass(dict, prefs.soundsLike)
             val live = chunker
             chunker = null
             val local = runCatching {
@@ -399,7 +399,7 @@ class DictationService : AccessibilityService() {
                     "wholeFallback" to (chunked?.wholeFallback ?: false),
                     "decodedWhileTalkingMs" to (live?.decodedWhileRecordingMs ?: 0),
                     "afterStopDecodeMs" to decodeMs, "chars" to result.text.length,
-                    "replaced" to result.replaced, "respelled" to result.respelled,
+                    "replaced" to result.replaced, "respelled" to result.respelled, "soundAlike" to result.soundAlike,
                 )
                 result.text
             }.getOrElse {

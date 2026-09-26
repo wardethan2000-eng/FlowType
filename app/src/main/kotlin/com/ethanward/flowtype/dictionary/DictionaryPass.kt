@@ -13,12 +13,14 @@ package com.ethanward.flowtype.dictionary
  *    matches its parts heard apart ("decal forge"). All-lowercase outputs
  *    ("going to") aren't enforced, so they can still start a sentence.
  *
- * Fuzzy "sounds like" matching (bamboo → Bambu) is Phase 2; until then, add a
- * replacement for it.
+ * 3. With [soundsLike], Words heard as ordinary words ("bamboo" → "Bambu"),
+ *    by [SoundsLike]'s sound key and spelling closeness.
  */
-class DictionaryPass(dictionary: Dictionary) {
+class DictionaryPass(dictionary: Dictionary, private val soundsLike: Boolean = false) {
 
-    data class Result(val text: String, val replaced: Int, val respelled: Int)
+    data class Result(val text: String, val replaced: Int, val respelled: Int, val soundAlike: Int = 0)
+
+    private val words = dictionary.words
 
     private val replacements = dictionary.replacements.sortedByDescending { it.from.length }
     private val replaceRegex = alternation(replacements.map { phrasePattern(it.from) })
@@ -41,6 +43,12 @@ class DictionaryPass(dictionary: Dictionary) {
                 transferCase(m.value, replacements[i].to.trim())
             }
         }
+        var soundAlike = 0
+        if (soundsLike) {
+            val (t, n) = SoundsLike.apply(out, words)
+            out = t
+            soundAlike = n
+        }
         spellRegex?.let { regex ->
             out = regex.replace(out) { m ->
                 val exact = spellings[groupIndex(m)]
@@ -48,7 +56,7 @@ class DictionaryPass(dictionary: Dictionary) {
                 exact
             }
         }
-        return Result(out, replaced, respelled)
+        return Result(out, replaced, respelled, soundAlike)
     }
 
     companion object {

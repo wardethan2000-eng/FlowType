@@ -76,4 +76,9 @@ class Prefs(context: Context) {
     var historyDays: Int
         get() = prefs.getInt("history_days", 7)
         set(value) = prefs.edit().putInt("history_days", value).apply()
+
+    /** Dictionary Words also catch sound-alikes ("bamboo" → "Bambu"). */
+    var soundsLike: Boolean
+        get() = prefs.getBoolean("sounds_like", true)
+        set(value) = prefs.edit().putBoolean("sounds_like", value).apply()
 }

@@ -16,6 +16,8 @@ import com.ethanward.flowtype.dictionary.DictionaryPass
 import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.ethanward.flowtype.dictionary.Replacement
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.materialswitch.MaterialSwitch
+import com.ethanward.flowtype.Prefs
 import org.json.JSONObject
 
 /**
@@ -25,6 +27,7 @@ import org.json.JSONObject
  */
 class DictionaryActivity : AppCompatActivity() {
     private lateinit var store: DictionaryStore
+    private lateinit var prefs: Prefs
     private var dict = Dictionary()
     private lateinit var words: LinearLayout
     private lateinit var replacements: LinearLayout
@@ -52,6 +55,7 @@ class DictionaryActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = DictionaryStore(this)
+        prefs = Prefs(this)
         dict = store.load()
         page("Dictionary") {
             text("Flowtype uses these as it types, on the phone, with no internet needed.", secondary = true)
@@ -60,6 +64,19 @@ class DictionaryActivity : AppCompatActivity() {
             section("Words")
             val wordCard = card(padded = false) { }
             words = wordCard.column
+            card(padded = false) {
+                addView(MaterialSwitch(context).apply {
+                    text = "Also catch words that sound like them"
+                    isChecked = prefs.soundsLike
+                    setPadding(dp(16), dp(8), dp(16), 0)
+                    setOnCheckedChangeListener { _, on ->
+                        prefs.soundsLike = on
+                        updateTry()
+                    }
+                })
+                text("\"bamboo\" → \"Bambu\", \"deck all forge\" → \"DecalForge\". Only for words of 5+ letters " +
+                    "that aren't acronyms.", secondary = true).setPadding(dp(16), 0, dp(16), dp(12))
+            }
             section("Replacements")
             val repCard = card(padded = false) { }
             replacements = repCard.column
@@ -136,7 +153,7 @@ class DictionaryActivity : AppCompatActivity() {
             tryOut.text = ""
             return
         }
-        val r = DictionaryPass(dict).apply(input)
+        val r = DictionaryPass(dict, prefs.soundsLike).apply(input)
         tryOut.text = "→ ${r.text}"
     }
 
