@@ -86,6 +86,7 @@ class DictationService : AccessibilityService() {
     /** Bumped on each new (non-restarting) input: "same field as when recording started". */
     private var session = 0
     private var keyboardTop: Int? = null
+    private var fieldBounds: Rect? = null
 
     private var capture: AudioCapture? = null
     private var dictationSession = -1
@@ -143,7 +144,9 @@ class DictationService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOWS_CHANGED,
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            // A compose bar grows as you type; only its size is read, never the text.
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
                 main.removeCallbacks(refreshKeyboard)
                 main.postDelayed(refreshKeyboard, 50)
             }
@@ -163,6 +166,11 @@ class DictationService : AccessibilityService() {
         val ime = runCatching { windows }.getOrDefault(emptyList())
             .firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
         keyboardTop = ime?.let { w -> Rect().also { w.getBoundsInScreen(it) }.takeIf { !it.isEmpty }?.top }
+        // Where the focused text box is (bounds only), so the button can sit above
+        // a chat's compose bar instead of over it.
+        fieldBounds = if (keyboardTop == null) null else runCatching {
+            findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { n -> Rect().also { n.getBoundsInScreen(it) }.takeIf { !it.isEmpty } }
+        }.getOrNull()
         updateButton()
     }
 
@@ -214,7 +222,12 @@ class DictationService : AccessibilityService() {
                 p.y = saved.second
             } else {
                 p.x = 0
-                keyboardTop?.let { p.y = it - window }
+                keyboardTop?.let {
+                    p.y = ButtonPlacement.aboveKeyboard(
+                        it, window, fieldBounds?.top, fieldBounds?.bottom,
+                        nearGap = (NEAR_KEYBOARD_DP * density).toInt(), maxBoxHeight = (MAX_BOX_DP * density).toInt(),
+                    )
+                }
             }
             val bounds = windowManager.currentWindowMetrics.bounds
             val (x, y) = ButtonPlacement.clamp(p.x, p.y, width, window, bounds.width(), bounds.height())
@@ -723,6 +736,10 @@ class DictationService : AccessibilityService() {
         private const val HOLD_TO_DRAG_MS = 300L
         private const val HOLD_TO_TALK_MS = 350L
         private const val CANCEL_SLIDE_DP = 100
+        /** A text box whose bottom is this close to the keyboard counts as sitting on it. */
+        private const val NEAR_KEYBOARD_DP = 120
+        /** Taller than this, a box is a page (notes, email body), not a compose bar. */
+        private const val MAX_BOX_DP = 220
         private const val CONTEXT_CHARS = 80
         private const val UNDO_MS = 6_000L
         private const val RETRY_MS = 2 * 60_000L

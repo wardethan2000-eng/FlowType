@@ -23,4 +23,20 @@ class ButtonPlacementTest {
         assertEquals(60 to 1250, ButtonPlacement.dragged(100, 1200, dx = 40f, dy = 50f))
         assertEquals(140 to 1150, ButtonPlacement.dragged(100, 1200, dx = -40f, dy = -50f))
     }
+
+    // Screen px at 3x: keyboard top at 1500, button window 204, gap 360, max box 660.
+    private fun above(top: Int?, bottom: Int?) = ButtonPlacement.aboveKeyboard(1500, 204, top, bottom, 360, 660)
+
+    @Test
+    fun composeBarOnTheKeyboardGetsTheButtonAboveIt() {
+        // A chat box from 1350 to 1480, right on the keyboard.
+        assertEquals(1350 - 204, above(1350, 1480))
+    }
+
+    @Test
+    fun otherFieldsKeepItAboveTheKeyboard() {
+        assertEquals(1500 - 204, above(200, 330)) // a search bar at the top
+        assertEquals(1500 - 204, above(300, 1480)) // a notes page down to the keyboard
+        assertEquals(1500 - 204, above(null, null)) // unknown
+    }
 }

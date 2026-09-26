@@ -19,4 +19,26 @@ object ButtonPlacement {
      */
     fun dragged(startX: Int, startY: Int, dx: Float, dy: Float): Pair<Int, Int> =
         (startX - dx).toInt() to (startY + dy).toInt()
+
+    /**
+     * The button's top (y) when it follows the keyboard. A short text box
+     * sitting right on the keyboard (a chat's compose bar) gets the button just
+     * above the box, so it covers neither the box nor its send button. Any
+     * other field (higher up, or tall like a notes page) gets it just above the
+     * keyboard.
+     */
+    fun aboveKeyboard(
+        keyboardTop: Int,
+        window: Int,
+        fieldTop: Int?,
+        fieldBottom: Int?,
+        nearGap: Int,
+        maxBoxHeight: Int,
+    ): Int {
+        val base = keyboardTop - window
+        if (fieldTop == null || fieldBottom == null || fieldBottom <= fieldTop) return base
+        val sitsOnKeyboard = keyboardTop - fieldBottom in -nearGap..nearGap
+        val short = fieldBottom - fieldTop <= maxBoxHeight
+        return if (sitsOnKeyboard && short) maxOf(0, fieldTop - window) else base
+    }
 }

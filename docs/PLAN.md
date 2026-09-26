@@ -159,6 +159,10 @@ Flowtype gets its own `PRIVACY.md`.
   recording starts the moment a finger lands, and letting go after 0.35 s
   types it (slide left first to discard; a quick tap still opens the panel).
   With the default "Stay where I put it", holding drags the button instead.
+  Placement is field-aware: a short text box sitting on the keyboard (a
+  chat's compose bar) gets the button just above the box, not over it; other
+  fields get it just above the keyboard. Only the box's bounds are read, and
+  it re-checks as the box grows (text-changed events, text never read).
 - **Hands-free mode** (Phase 3): double-tap to lock recording on; tap to stop.
 - Hold the button (~0.3 s) to drag it anywhere; it remembers its place per
   orientation. It's half see-through while idle so it hides less of the app.

@@ -4,7 +4,7 @@
      button, and commitText inserts at the cursor (PLAN §4.1, §4.6). Window
      events only feed the keyboard-visible check. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowsChanged|typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowsChanged|typeWindowStateChanged|typeViewTextChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagInputMethodEditor|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
