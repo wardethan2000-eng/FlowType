@@ -4,16 +4,19 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- allowBackup off: the Keystore-wrapped API key must not reach a cloud
+         backup or Smart Switch (PLAN §4.9). -->
     <application
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:theme="@style/Theme.PhoneWhisper">
+        android:theme="@style/Theme.Flowtype">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.MainActivity"
             android:exported="true"
             android:launchMode="singleTop">
             <intent-filter>
@@ -22,9 +25,31 @@
             </intent-filter>
         </activity>
 
-        <service
-            android:name=".WhisperAccessibilityService"
+        <!-- The bench runs in its own process, so the RAM it measures is the
+             model's and not the dictation service's. Exported so it can be
+             started with `adb shell am start` for unattended runs. -->
+        <activity
+            android:name=".ui.BenchActivity"
+            android:exported="true"
+            android:process=":bench"
+            android:label="@string/bench_title" />
+
+        <activity
+            android:name=".ui.InsertionTestActivity"
             android:exported="false"
+            android:label="@string/insertion_test_title"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.CleanupTestActivity"
+            android:exported="false"
+            android:label="@string/cleanup_test_title"
+            android:windowSoftInputMode="adjustResize" />
+
+        <service
+            android:name=".service.DictationService"
+            android:exported="false"
+            android:label="@string/app_name"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

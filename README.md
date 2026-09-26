@@ -11,9 +11,10 @@ text appears at your cursor in any app.
   without a key you get the phone's own punctuated text.
 - A **personal dictionary** for names, jargon and replacements.
 
-Built for the Samsung Galaxy S25 first. Status: **Phase 0**. This is still
-Phone Whisper's code plus our build setup; see [docs/PLAN.md](docs/PLAN.md) for
-the whole plan.
+Built for the Samsung Galaxy S25 first. Status: **Phase 0**, the first slice
+of a new app: the button, on-phone transcription and insertion, plus developer
+screens that measure speed and insertion. See [docs/PLAN.md](docs/PLAN.md) for
+the whole plan and [PRIVACY.md](PRIVACY.md) for what leaves the phone.
 
 ## Build
 
@@ -28,5 +29,6 @@ scripts/remote-build.sh install   # adb install the APK onto the phone
 
 ## Origin
 
-Started from [Phone Whisper](https://github.com/kafkasl/phone-whisper) by Pol
-Alvarez (Apache-2.0), with its history kept. See [NOTICE](NOTICE).
+This repository started from [Phone Whisper](https://github.com/kafkasl/phone-whisper)
+by Pol Alvarez (Apache-2.0), and its history is kept. Flowtype is a new app
+written from scratch; see [NOTICE](NOTICE).

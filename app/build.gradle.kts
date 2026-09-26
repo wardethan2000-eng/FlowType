@@ -4,15 +4,15 @@ plugins {
 }
 
 android {
-    namespace = "com.kafkasl.phonewhisper"
-    compileSdk = 34
+    namespace = "com.ethanward.flowtype"
+    compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.kafkasl.phonewhisper"
-        minSdk = 30
-        targetSdk = 34
-        versionCode = 2
-        versionName = "0.3.0"
+        applicationId = "com.ethanward.flowtype"
+        minSdk = 33
+        targetSdk = 35
+        versionCode = 1
+        versionName = "0.0.1"
 
         ndk { abiFilters += "arm64-v8a" }
     }
@@ -24,11 +24,13 @@ android {
 
     @Suppress("DEPRECATION")
     kotlinOptions { jvmTarget = "17" }
-
-    testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
 dependencies {
+    // sherpa-onnx's own Android AAR (native libraries + Kotlin API), put here by
+    // scripts/fetch-sherpa-onnx.sh on the build box. Not committed.
+    implementation(files("libs/sherpa-onnx.aar"))
+
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")

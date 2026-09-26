@@ -6,9 +6,15 @@ what it says, in its phase order, and update it when a decision changes.
 ## Layout
 
 ```text
-app/src/main/kotlin/com/kafkasl/phonewhisper/   the app (package renamed in Phase 1)
-app/src/main/kotlin/com/k2fsa/sherpa/onnx/      vendored sherpa-onnx bindings, v1.12.28
+app/src/main/kotlin/com/ethanward/flowtype/     the app
+  service/   accessibility service: field watcher, button, record → decode → insert
+  audio/     mic capture, WAV, loudness stats
+  asr/       sherpa-onnx models: catalog, download, decode, VAD segments, WER
+  insert/    commitText + getSurroundingText check, insertion log
+  cleanup/   cleanup prompt, Responses API request/stream, Keystore-held key
+  ui/        main screen and the developer screens (bench, insertion, cleanup timing)
 app/src/test/                                   JVM unit tests
+app/libs/sherpa-onnx.aar                        fetched on the box, never committed
 scripts/remote-build.sh                         every build, run on the build box
 scripts/builder/                                scripts that run ON the box
 docs/PLAN.md                                    the plan
@@ -34,9 +40,13 @@ with them. If the box is unreachable, say so and ask; don't build locally.
   Keystore. Never put a key in the code, the repo or a build config.
 - **Keep the debug signing key on the box** (`~/.android/debug.keystore`). A
   different key means uninstall, reinstall, and re-granting accessibility.
-- sherpa-onnx's native libraries and its Kotlin bindings move together: bump
-  `VERSION` in `scripts/fetch-sherpa-onnx.sh` and replace the bindings in one
-  commit.
+- sherpa-onnx comes only from its release AAR (native libraries and the
+  Kotlin API together): bump `VERSION` and `SHA256` in
+  `scripts/fetch-sherpa-onnx.sh` together, from the release's asset digest.
+  Never vendor its sources or `.so` files.
+- **Recordings stay off the repo** (it's public). The bench reads them from the
+  phone (`Android/data/com.ethanward.flowtype/files/recordings/`); a local copy
+  goes in `recordings/`, which is ignored.
 
 ## Definition of Done
 

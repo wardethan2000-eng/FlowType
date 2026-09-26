@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- flagInputMethodEditor (Android 13+) makes Android attach the service's own
+     input method next to the real keyboard: onStartInput/onFinishInput drive the
+     button, and commitText inserts at the cursor (PLAN §4.1, §4.6). Window
+     events only feed the keyboard-visible check. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeViewFocused"
+    android:accessibilityEventTypes="typeWindowsChanged|typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagInputMethodEditor|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
-    android:notificationTimeout="100"
+    android:notificationTimeout="50"
     android:description="@string/accessibility_description" />

@@ -4,5 +4,9 @@ build/
 local.properties
 .env
 *.apk
-app/src/main/jniLibs/
+*.aar
+app/libs/
 out/
+# Ethan's own recordings and bench output: never committed (the repo is public).
+recordings/
+bench-results/

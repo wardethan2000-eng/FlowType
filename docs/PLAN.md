@@ -673,8 +673,10 @@ developer screens.
   The JDK and Android SDK live in `~/android` on the box (about 1.5 GB, plus
   Gradle caches); see `scripts/builder/setup-android-sdk.sh`.
 - **sherpa-onnx v1.13.8** (2026-09-10), from the AAR attached to its GitHub
-  release. It contains the native libraries and the Kotlin API, replacing the
-  vendored bindings and the jniLibs tarball.
+  release (`sherpa-onnx-1.13.8.aar`, 50 MB). It contains the native libraries
+  for all four ABIs and the Kotlin API (`com.k2fsa.sherpa.onnx.*`, confirmed in
+  Phase 0), replacing the vendored bindings and the jniLibs tarball. The app
+  keeps only `arm64-v8a`.
   - `scripts/fetch-sherpa-onnx.sh` downloads it on the box and checks its
     SHA-256.
   - The version lives in one place in that script.

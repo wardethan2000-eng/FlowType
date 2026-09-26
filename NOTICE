@@ -5,5 +5,5 @@ This project started from Phone Whisper (https://github.com/kafkasl/phone-whispe
 Copyright 2026 Pol Alvarez, licensed under the Apache License, Version 2.0.
 Its history is kept in this repository.
 
-The Kotlin bindings in app/src/main/kotlin/com/k2fsa/sherpa/onnx/ come from
-sherpa-onnx (https://github.com/k2-fsa/sherpa-onnx), Apache License 2.0.
+The app is built with sherpa-onnx (https://github.com/k2-fsa/sherpa-onnx),
+Apache License 2.0, from its release AAR (not included in this repository).

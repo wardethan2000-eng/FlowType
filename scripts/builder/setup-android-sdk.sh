@@ -71,7 +71,9 @@ else
   rmdir "$BASE/tools.tmp"
 fi
 
-yes | "$sdkmanager" --sdk_root="$BASE/sdk" --licenses >/dev/null
+# `yes` dies of SIGPIPE when sdkmanager stops reading; under pipefail that
+# would end the script, so its status is ignored.
+{ yes || true; } | "$sdkmanager" --sdk_root="$BASE/sdk" --licenses >/dev/null
 "$sdkmanager" --sdk_root="$BASE/sdk" --install "${PACKAGES[@]}"
 "$sdkmanager" --sdk_root="$BASE/sdk" --list_installed
 

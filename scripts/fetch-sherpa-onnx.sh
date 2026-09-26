@@ -1,51 +1,42 @@
 #!/usr/bin/env bash
-# Puts sherpa-onnx's prebuilt Android libraries (arm64-v8a) in
-# app/src/main/jniLibs/, where Gradle packs them into the APK. They are not
-# committed (.gitignore), and remote-build.sh never syncs over them.
+# Puts sherpa-onnx's Android AAR (native libraries for every ABI plus the
+# Kotlin API, com.k2fsa.sherpa.onnx.*) at app/libs/sherpa-onnx.aar, where
+# app/build.gradle.kts picks it up. Not committed (.gitignore), and
+# remote-build.sh never syncs over it.
 #
-# The version must match the Kotlin bindings vendored in
-# app/src/main/kotlin/com/k2fsa/sherpa/onnx/: bump both together.
+# VERSION and SHA256 are the one place the sherpa-onnx version lives: bump
+# them together, from the release page's asset digest. A download that doesn't
+# match SHA256 stops the build.
 #
-# The tarball is cached in ~/android/downloads; its checksum is recorded in
-# ~/android/checksums.txt the first time, and a later download that differs
-# stops the build.
+# The AAR is cached in ~/android/downloads.
 set -euo pipefail
 
-VERSION="1.12.28"
+VERSION="1.13.8"
+SHA256="633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEST="$ROOT/app/src/main/jniLibs/arm64-v8a"
-STAMP="$ROOT/app/src/main/jniLibs/.sherpa-onnx-version"
+DEST="$ROOT/app/libs/sherpa-onnx.aar"
+STAMP="$ROOT/app/libs/.sherpa-onnx-version"
 
-if [ "$(cat "$STAMP" 2>/dev/null)" = "$VERSION" ]; then
+if [ "$(cat "$STAMP" 2>/dev/null)" = "$VERSION $SHA256" ] && [ -s "$DEST" ]; then
   exit 0
 fi
 
-BASE="$HOME/android"
-NAME="sherpa-onnx-v$VERSION-android.tar.bz2"
-TARBALL="$BASE/downloads/$NAME"
-SUMS="$BASE/checksums.txt"
-mkdir -p "$BASE/downloads"
-touch "$SUMS"
+NAME="sherpa-onnx-$VERSION.aar"
+CACHED="$HOME/android/downloads/$NAME"
+mkdir -p "$(dirname "$CACHED")" "$(dirname "$DEST")"
 
-[ -s "$TARBALL" ] || curl -fL --retry 3 -o "$TARBALL" \
-  "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$VERSION/$NAME"
-sum=$(sha256sum "$TARBALL" | cut -d' ' -f1)
-known=$(awk -v n="$NAME" '$2 == n { print $1 }' "$SUMS")
-if [ -z "$known" ]; then
-  echo "$sum $NAME" >>"$SUMS"
-  echo "fetch-sherpa-onnx: recorded $NAME sha256 $sum"
-elif [ "$known" != "$sum" ]; then
-  echo "fetch-sherpa-onnx: $NAME does not match its recorded checksum ($known), stopping" >&2
+if [ ! -s "$CACHED" ]; then
+  curl -fL --retry 3 -o "$CACHED.part" \
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$VERSION/$NAME"
+  mv "$CACHED.part" "$CACHED"
+fi
+sum=$(sha256sum "$CACHED" | cut -d' ' -f1)
+if [ "$sum" != "$SHA256" ]; then
+  echo "fetch-sherpa-onnx: $NAME has sha256 $sum, expected $SHA256; stopping" >&2
+  rm -f "$CACHED"
   exit 1
 fi
 
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-tar -xjf "$TARBALL" -C "$tmp"
-src=$(find "$tmp" -type d -path '*jniLibs/arm64-v8a' | head -1)
-[ -n "$src" ] || { echo "fetch-sherpa-onnx: no jniLibs/arm64-v8a in $NAME" >&2; exit 1; }
-rm -rf "$DEST"
-mkdir -p "$DEST"
-cp "$src"/*.so "$DEST/"
-echo "$VERSION" >"$STAMP"
-echo "fetch-sherpa-onnx: $(ls "$DEST"/*.so | wc -l) libraries for v$VERSION in app/src/main/jniLibs/arm64-v8a"
+cp "$CACHED" "$DEST"
+echo "$VERSION $SHA256" >"$STAMP"
+echo "fetch-sherpa-onnx: $NAME (sha256 ok) in app/libs/sherpa-onnx.aar"

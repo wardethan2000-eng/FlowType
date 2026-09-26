@@ -17,8 +17,8 @@
 # box, the command runs there through the box's one queue
 # (scripts/builder/queue-run, a copy of DecalForge's: every checkout of either
 # repo waits in the same line, at most two jobs at once), and the APK comes back
-# to out/. Git metadata, build outputs, Gradle's caches and the sherpa-onnx
-# native libraries are never sent; the box keeps its own copies, so builds stay
+# to out/. Git metadata, build outputs, Gradle's caches and the sherpa-onnx AAR
+# (app/libs/) are never sent; the box keeps its own copies, so builds stay
 # incremental.
 #
 # The box's toolchain lives under ~/android (scripts/builder/setup-android-sdk.sh
@@ -53,14 +53,14 @@ sync_up() {
   ssh -o BatchMode=yes "$HOST" "mkdir -p $REMOTE"
   # --delete keeps the copy an exact image of this tree, but never touches the
   # excluded paths on the far side: the build outputs there are what make
-  # builds incremental, and jniLibs/ is what fetch-sherpa-onnx.sh unpacked.
+  # builds incremental, and app/libs/ holds the AAR fetch-sherpa-onnx.sh checked.
   rsync -az --delete \
     --exclude='.git' \
     --exclude='.gradle/' \
     --exclude='.kotlin/' \
     --exclude='build/' \
     --exclude='app/build/' \
-    --exclude='app/src/main/jniLibs/' \
+    --exclude='app/libs/' \
     --exclude='local.properties' \
     --exclude='out/' \
     "$ROOT/" "$HOST:$REMOTE/"
@@ -95,7 +95,7 @@ case "$mode" in
     ;;
   test)
     sync_up
-    remote ./gradlew --console=plain testDebugUnitTest "$@"
+    remote bash -c 'scripts/fetch-sherpa-onnx.sh && ./gradlew --console=plain testDebugUnitTest "$@"' _ "$@"
     ;;
   install)
     # adb is light; it runs here, where the phone is (USB, or `adb pair` /
