@@ -17,6 +17,14 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
+    signingConfigs {
+        getByName("debug") {
+            // CI signs with the build box's debug key (android.yml), so its APKs
+            // install over the box's. Unset: Android's usual ~/.android one.
+            System.getenv("FLOWTYPE_DEBUG_KEYSTORE")?.let { storeFile = file(it) }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
