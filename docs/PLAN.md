@@ -431,12 +431,16 @@ quality anyway. A cache hit costs a tenth as much, and is usually quicker.
 - The last 50 dictations are stored on the phone (raw text, cleaned text, app,
   timing). They are viewable and searchable, and auto-delete after 7 days
   (setting).
-- **Undo cleanup**: a notification action or a long-press on the button
-  replaces the last insert with the raw text. It works through the input
-  connection, and only when the text before the cursor still ends with exactly
-  what we inserted.
-- **Retry**: if cleanup or insertion fails, the button turns to retry and holds
-  the audio in memory until the keyboard closes.
+- **Undo cleanup**: for 6 s after a cleaned-up dictation, an "Undo cleanup"
+  chip beside the button replaces it with the phone's own text. (Long-press
+  now picks the button up to drag it, so the chip replaces the plan's
+  long-press.) It works through the input connection, and only when the text
+  before the cursor still ends with exactly what we inserted.
+- **Retry**: when the text couldn't be typed (you left the field, or it
+  ended up on the clipboard), a "Type it here" chip holds the text for 2
+  minutes and types it into whatever field is open. It holds the text, not
+  the audio: decoding the same audio again would give the same text.
+- Retention: Off, 1, 7 (default) or 30 days, set on the History screen.
 
 ### 4.8 Settings screens
 

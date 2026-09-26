@@ -40,6 +40,8 @@ import com.ethanward.flowtype.cleanup.Cleaner
 import com.ethanward.flowtype.cleanup.CleanupConfig
 import com.ethanward.flowtype.dictionary.DictionaryPass
 import com.ethanward.flowtype.dictionary.DictionaryStore
+import com.ethanward.flowtype.history.HistoryEntry
+import com.ethanward.flowtype.history.HistoryStore
 import com.ethanward.flowtype.insert.Inserter
 import com.ethanward.flowtype.insert.InsertionLog
 import com.ethanward.flowtype.insert.InsertionRecord
@@ -68,6 +70,7 @@ class DictationService : AccessibilityService() {
     private lateinit var store: ModelStore
     private lateinit var log: InsertionLog
     private lateinit var dictionary: DictionaryStore
+    private lateinit var history: HistoryStore
     private lateinit var keys: ApiKeyStore
     private lateinit var cleaner: Cleaner
     private val net = Executors.newSingleThreadExecutor { Thread(it, "flowtype-cleanup") }
@@ -101,6 +104,7 @@ class DictationService : AccessibilityService() {
         store = ModelStore(this)
         log = InsertionLog(this)
         dictionary = DictionaryStore(this)
+        history = HistoryStore(this) { prefs.historyDays }
         keys = ApiKeyStore(this)
         cleaner = Cleaner(keys)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -175,11 +179,16 @@ class DictationService : AccessibilityService() {
             v.face.setOnTouchListener(DragOrTap())
             v.onCancel = { cancelDictation() }
             v.onAccept = { stopDictation() }
+            v.onChip = { onChip() }
             button = v
         }
         val density = resources.displayMetrics.density
         val window = (MicButton.WINDOW_DP * density).toInt()
-        val width = if (state == MicButton.State.RECORDING) (MicButton.PANEL_WINDOW_DP * density).toInt() else window
+        val width = when {
+            state == MicButton.State.RECORDING -> (MicButton.PANEL_WINDOW_DP * density).toInt()
+            state == MicButton.State.IDLE && offer != null -> (MicButton.CHIP_WINDOW_DP * density).toInt()
+            else -> window
+        }
         val p = params ?: WindowManager.LayoutParams(
             width, window,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -210,6 +219,13 @@ class DictationService : AccessibilityService() {
             p.y = y
         }
         b.setState(state)
+        b.setChip(
+            when (offer) {
+                is Offer.Undo -> "Undo cleanup"
+                is Offer.Retry -> "Type it here"
+                null -> null
+            },
+        )
         if (attached) windowManager.updateViewLayout(b, p) else {
             windowManager.addView(b, p)
             attached = true
@@ -327,6 +343,7 @@ class DictationService : AccessibilityService() {
             toast("Couldn't open the microphone")
             return
         }
+        setOffer(null)
         capture = cap
         dictationSession = session
         dictationField = field
@@ -391,7 +408,7 @@ class DictationService : AccessibilityService() {
             }
             val style = cleanupStyle(field)
             if (local.isBlank() || style == null) {
-                main.post { finish(local, startedSession, field, stoppedAt) }
+                main.post { finish(local, local, if (style == null) "off" else "empty", startedSession, field, stoppedAt) }
                 return@execute
             }
             net.execute {
@@ -401,8 +418,8 @@ class DictationService : AccessibilityService() {
                         it.text.subSequence(0, it.selectionStart.coerceIn(0, it.text.length)).toString()
                     }
                 }.getOrNull()
-                val text = cleanup(local, style, pass, dict.words + dict.replacements.map { it.to }.filter { t -> t.any(Char::isUpperCase) }, before)
-                main.post { finish(text, startedSession, field, stoppedAt) }
+                val (text, outcome) = cleanup(local, style, pass, dict.words + dict.replacements.map { it.to }.filter { t -> t.any(Char::isUpperCase) }, before)
+                main.post { finish(local, text, outcome, startedSession, field, stoppedAt) }
             }
         }
     }
@@ -414,7 +431,7 @@ class DictationService : AccessibilityService() {
     }
 
     /** net thread. The cleaned text, or [local] if cleanup fails in any way. */
-    private fun cleanup(local: String, style: String, pass: DictionaryPass, words: List<String>, before: String?): String {
+    private fun cleanup(local: String, style: String, pass: DictionaryPass, words: List<String>, before: String?): Pair<String, String> {
         val config = CleanupConfig.byId(prefs.cleanupModel)
         val result = cleaner.clean(local, style, words, config, prefs.cleanupDeadlineMs, before)
         when (result) {
@@ -427,7 +444,7 @@ class DictationService : AccessibilityService() {
                 )
                 if (prefs.keyProblem != null) prefs.keyProblem = null
                 // Pass 2: the model may have re-cased a dictionary word.
-                return pass.apply(result.text).text
+                return pass.apply(result.text).text to "cleaned"
             }
             is Cleaner.Result.Fallback -> {
                 Trace.event(
@@ -439,7 +456,7 @@ class DictationService : AccessibilityService() {
                     prefs.keyProblem = result.reason.name
                     if (first) main.post { toast(keyProblemMessage(result.reason)) }
                 }
-                return local
+                return local to result.reason.name
             }
         }
     }
@@ -450,13 +467,70 @@ class DictationService : AccessibilityService() {
         else -> "Your key can't use the cleanup model, so this was typed without AI cleanup"
     }
 
-    private fun finish(text: String, startedSession: Int, field: EditorInfo, stoppedAt: Long) {
+    private fun finish(raw: String, typed: String, cleanup: String, startedSession: Int, field: EditorInfo, stoppedAt: Long) {
         Trace.event("stop_to_insert_call", "ms" to SystemClock.elapsedRealtime() - stoppedAt)
-        insert(text, "dictation", startedSession, field)
+        insert(typed, "dictation", startedSession, field, raw, cleanup, stoppedAt)
     }
 
-    /** Main thread. Inserts only into the input session recording started in. */
-    private fun insert(text: String, source: String, startedSession: Int, field: EditorInfo) {
+    /** What the chip beside the button offers after a dictation (PLAN §4.7). */
+    private sealed interface Offer {
+        /** Put back the phone's own text in place of the cleaned text just typed. */
+        data class Undo(val session: Int, val typed: String, val original: String) : Offer
+        /** Type text that couldn't be typed, into whatever field is open now. */
+        data class Retry(val text: String) : Offer
+    }
+
+    private var offer: Offer? = null
+    private val clearOffer = Runnable { setOffer(null) }
+
+    private fun setOffer(o: Offer?, forMs: Long = 0) {
+        offer = o
+        main.removeCallbacks(clearOffer)
+        if (o != null) main.postDelayed(clearOffer, forMs)
+        updateButton()
+    }
+
+    private fun onChip() {
+        when (val o = offer) {
+            is Offer.Undo -> {
+                setOffer(null)
+                if (session != o.session) return toast("That field has closed")
+                val method = inputMethod ?: return
+                io.execute {
+                    val ok = newInserter(method).replaceLast(o.typed, o.original)
+                    if (!ok) main.post { toast("The text has changed since, so it was left as is") }
+                }
+            }
+            is Offer.Retry -> {
+                val field = editor ?: return toast("Tap into a text field first")
+                setOffer(null)
+                setState(MicButton.State.BUSY)
+                insert(o.text, "retry", session, field, o.text, "retry", SystemClock.elapsedRealtime())
+            }
+            null -> {}
+        }
+    }
+
+    private fun newInserter(method: InputMethod) = Inserter(
+        method,
+        focusedField = { runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull() },
+        clipboard = getSystemService(ClipboardManager::class.java),
+        keepCase = dictionary.load().words.toSet(),
+    )
+
+    /**
+     * Main thread. Inserts only into the input session recording started in,
+     * then records the dictation in history and offers undo or retry.
+     */
+    private fun insert(
+        text: String,
+        source: String,
+        startedSession: Int,
+        field: EditorInfo,
+        raw: String = text,
+        cleanup: String = "off",
+        stoppedAt: Long = SystemClock.elapsedRealtime(),
+    ) {
         val record = { outcome: Outcome, chars: Int, checkMs: Long, retries: Int ->
             log.add(
                 InsertionRecord(
@@ -465,21 +539,34 @@ class DictationService : AccessibilityService() {
                 ),
             )
         }
+        val remember = { outcome: Outcome ->
+            if (source != "test" && text.isNotBlank()) history.add(
+                HistoryEntry(
+                    System.currentTimeMillis(), field.packageName ?: "?", raw, text, cleanup,
+                    outcome.name, SystemClock.elapsedRealtime() - stoppedAt,
+                ),
+            )
+        }
         if (session != startedSession || editor == null) {
             record(Outcome.FIELD_CHANGED, text.length, 0, 0)
-            toast("You left that field, so nothing was typed")
+            io.execute { remember(Outcome.FIELD_CHANGED) }
             setState(MicButton.State.IDLE)
+            if (text.isNotBlank()) {
+                toast("You left that field. Tap \"Type it here\" to put it where you are now.")
+                setOffer(Offer.Retry(text), RETRY_MS)
+            }
             return
         }
         val method = inputMethod ?: return setState(MicButton.State.IDLE)
+        val keepCase = dictionary.load().words.toSet()
         io.execute {
-            val result = Inserter(
-                method,
-                focusedField = { runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull() },
-                clipboard = getSystemService(ClipboardManager::class.java),
-                keepCase = dictionary.load().words.toSet(),
-            ).insert(text)
+            val result = newInserter(method).insert(text)
             record(result.outcome, text.length, result.checkMs, result.retries)
+            remember(result.outcome)
+            // Undo cleanup puts back the phone's own text, fitted the same way.
+            val original = if (cleanup == "cleaned" && raw != text && result.typed != null) {
+                InsertionRules.fitToContext(raw, result.before, keepCase)
+            } else null
             main.post {
                 when (result.outcome) {
                     Outcome.EMPTY -> toast("Didn't catch that")
@@ -493,6 +580,12 @@ class DictationService : AccessibilityService() {
                     else -> {}
                 }
                 setState(MicButton.State.IDLE)
+                when {
+                    original != null && result.typed != null ->
+                        setOffer(Offer.Undo(startedSession, result.typed, original), UNDO_MS)
+                    result.outcome == Outcome.COPIED || result.outcome == Outcome.NO_CONNECTION ->
+                        setOffer(Offer.Retry(text), RETRY_MS)
+                }
                 main.removeCallbacks(releaseIdleModel)
                 main.postDelayed(releaseIdleModel, IDLE_RELEASE_MS)
             }
@@ -558,6 +651,8 @@ class DictationService : AccessibilityService() {
         private const val IDLE_RELEASE_MS = 15 * 60 * 1000L
         private const val HOLD_TO_DRAG_MS = 300L
         private const val CONTEXT_CHARS = 80
+        private const val UNDO_MS = 6_000L
+        private const val RETRY_MS = 2 * 60_000L
 
         /** Set while the system has the service bound; the main screen's health line reads it. */
         @Volatile

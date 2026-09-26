@@ -71,4 +71,9 @@ class Prefs(context: Context) {
     var pasteNoticeShown: Boolean
         get() = prefs.getBoolean("paste_notice", false)
         set(value) = prefs.edit().putBoolean("paste_notice", value).apply()
+
+    /** Days of dictation history kept on the phone; 0 = none (PLAN §4.7). */
+    var historyDays: Int
+        get() = prefs.getInt("history_days", 7)
+        set(value) = prefs.edit().putInt("history_days", value).apply()
 }

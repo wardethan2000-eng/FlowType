@@ -9,6 +9,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.TextView
 import com.ethanward.flowtype.R
 
 /**
@@ -21,6 +22,7 @@ class MicButton(context: Context) : FrameLayout(context) {
 
     var onCancel: (() -> Unit)? = null
     var onAccept: (() -> Unit)? = null
+    var onChip: (() -> Unit)? = null
 
     private val density = resources.displayMetrics.density
     private val circle = GradientDrawable().apply { shape = GradientDrawable.OVAL }
@@ -35,6 +37,9 @@ class MicButton(context: Context) : FrameLayout(context) {
     private val waveform = WaveformView(context)
     private var state = State.IDLE
     private var dragging = false
+    /** A one-tap offer beside the idle button: "Undo cleanup", "Type it here". */
+    private val chip = TextView(context)
+    val chipShown: Boolean get() = chip.visibility == VISIBLE
 
     init {
         val size = dp(SIZE_DP)
@@ -64,6 +69,22 @@ class MicButton(context: Context) : FrameLayout(context) {
             marginEnd = dp(8)
         })
 
+        chip.setTextColor(0xFFFFFFFF.toInt())
+        chip.textSize = 14f
+        chip.gravity = Gravity.CENTER
+        chip.maxLines = 1
+        chip.background = GradientDrawable().apply {
+            cornerRadius = dp(CHIP_HEIGHT_DP / 2).toFloat()
+            setColor(context.getColor(R.color.panel_background))
+        }
+        chip.elevation = dp(4).toFloat()
+        chip.setPadding(dp(12), 0, dp(12), 0)
+        chip.setOnClickListener { onChip?.invoke() }
+        chip.visibility = GONE
+        addView(chip, LayoutParams(dp(CHIP_WIDTH_DP), dp(CHIP_HEIGHT_DP), Gravity.CENTER_VERTICAL or Gravity.END).apply {
+            marginEnd = dp(SIZE_DP + 16)
+        })
+
         clipChildren = false
         clipToPadding = false
         setState(State.IDLE)
@@ -81,8 +102,16 @@ class MicButton(context: Context) : FrameLayout(context) {
             layoutParams = LinearLayout.LayoutParams(dp(ACTION_DP), dp(ACTION_DP))
         }
 
+    /** Shows [label] beside the idle button, or hides the chip for null. */
+    fun setChip(label: String?) {
+        chip.text = label.orEmpty()
+        chip.contentDescription = label
+        chip.visibility = if (label != null && state == State.IDLE) VISIBLE else GONE
+    }
+
     fun setState(state: State) {
         this.state = state
+        if (state != State.IDLE) chip.visibility = GONE
         val recording = state == State.RECORDING
         panel.visibility = if (recording) VISIBLE else GONE
         face.visibility = if (recording) GONE else VISIBLE
@@ -121,5 +150,9 @@ class MicButton(context: Context) : FrameLayout(context) {
         /** The window while listening: the panel plus the same margins. */
         const val PANEL_WINDOW_DP = PANEL_WIDTH_DP + 16
         const val IDLE_ALPHA = 0.5f
+        const val CHIP_WIDTH_DP = 148
+        const val CHIP_HEIGHT_DP = 40
+        /** The window while a chip shows: chip, gap, button. */
+        const val CHIP_WINDOW_DP = CHIP_WIDTH_DP + SIZE_DP + 16 + 8
     }
 }

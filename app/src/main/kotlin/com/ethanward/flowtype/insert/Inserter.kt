@@ -31,7 +31,17 @@ class Inserter(
     private val keepCase: Set<String> = emptySet(),
 ) {
 
-    data class Result(val outcome: Outcome, val checkMs: Long, val retries: Int)
+    /**
+     * [typed] and [before] (the text before the cursor as it was) are kept in
+     * memory for undo, only for a verified commit. Never logged.
+     */
+    data class Result(
+        val outcome: Outcome,
+        val checkMs: Long,
+        val retries: Int,
+        val typed: String? = null,
+        val before: String? = null,
+    )
 
     fun insert(text: String): Result {
         if (text.isBlank()) return Result(Outcome.EMPTY, 0, 0)
@@ -63,7 +73,10 @@ class Inserter(
                 landed = InsertionRules.landed(afterCursor, toInsert)
                 if (landed == true) break
             }
-            if (landed == true) return done(Outcome.VERIFIED, started, retries, toInsert.length)
+            if (landed == true) {
+                return done(Outcome.VERIFIED, started, retries, toInsert.length)
+                    .copy(typed = toInsert, before = beforeCursor?.toString())
+            }
 
             // Did the commit do anything at all? Look once more after a pause,
             // so a slow app's late edit isn't mistaken for "nothing happened".
@@ -116,6 +129,23 @@ class Inserter(
         val ms = SystemClock.elapsedRealtime() - started
         Trace.event("insert", "outcome" to outcome, "chars" to chars, "checkMs" to ms, "retries" to retries)
         return Result(outcome, ms, retries)
+    }
+
+    /**
+     * Replaces [typed], if it's still exactly what's before the cursor with
+     * nothing selected, by [replacement] (undo cleanup, PLAN §4.7). The
+     * accessibility connection has no batch edit, so it's a delete then a commit.
+     */
+    fun replaceLast(typed: String, replacement: String): Boolean {
+        val ic = inputMethod.currentInputConnection ?: return false
+        val st = ic.getSurroundingText(typed.length + 2, 0, 0) ?: return false
+        if (st.selectionStart != st.selectionEnd) return false
+        val before = textBeforeCursor(st.text, st.selectionStart) ?: return false
+        if (!before.endsWith(typed)) return false
+        ic.deleteSurroundingText(typed.length, 0)
+        ic.commitText(replacement, 1, null)
+        Trace.event("undo_cleanup", "charsOut" to typed.length, "charsIn" to replacement.length)
+        return true
     }
 
     private fun textBeforeCursor(text: CharSequence, selectionStart: Int): CharSequence? =

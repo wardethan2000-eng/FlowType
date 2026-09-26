@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var dictionarySummary: TextView
     private lateinit var modelSummary: TextView
     private lateinit var cleanupSummary: TextView
+    private lateinit var historySummary: TextView
     private lateinit var tryCard: MaterialCardView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,6 +59,8 @@ class MainActivity : AppCompatActivity() {
                 cleanupSummary = navRow("AI cleanup") { open(CleanupSettingsActivity::class.java) }
                 divider()
                 dictionarySummary = navRow("Dictionary") { open(DictionaryActivity::class.java) }
+                divider()
+                historySummary = navRow("History") { open(HistoryActivity::class.java) }
                 divider()
                 modelSummary = navRow("Speech model") { open(ModelsActivity::class.java) }
                 divider()
@@ -106,6 +109,11 @@ class MainActivity : AppCompatActivity() {
             d.words.size.takeIf { it > 0 }?.let { "$it word" + if (it == 1) "" else "s" },
             d.replacements.size.takeIf { it > 0 }?.let { "$it replacement" + if (it == 1) "" else "s" },
         ).filterNotNull().joinToString(" · ")
+        historySummary.text = when (val d = prefs.historyDays) {
+            0 -> "Off"
+            1 -> "Your dictations, kept 1 day on this phone"
+            else -> "Your dictations, kept $d days on this phone"
+        }
         val keys = ApiKeyStore(this)
         cleanupSummary.text = when {
             !prefs.cleanupEnabled -> "Off"
