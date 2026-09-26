@@ -16,7 +16,6 @@ import android.view.Gravity
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.ethanward.flowtype.Prefs
 import com.ethanward.flowtype.R
@@ -42,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var modelSummary: TextView
     private lateinit var cleanupSummary: TextView
     private lateinit var historySummary: TextView
+    private lateinit var buttonSummary: TextView
     private lateinit var tryCard: MaterialCardView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,10 +64,7 @@ class MainActivity : AppCompatActivity() {
                 divider()
                 modelSummary = navRow("Speech model") { open(ModelsActivity::class.java) }
                 divider()
-                navRow("Mic button", "Hold it to drag it anywhere. Tap here to put it back above the keyboard.") {
-                    prefs.resetButtonPosition()
-                    Toast.makeText(this@MainActivity, "The mic button goes back above the keyboard", Toast.LENGTH_SHORT).show()
-                }
+                buttonSummary = navRow("Mic button") { open(ButtonSettingsActivity::class.java) }
             }
             section("Developer")
             card(padded = false) {
@@ -109,6 +106,8 @@ class MainActivity : AppCompatActivity() {
             d.words.size.takeIf { it > 0 }?.let { "$it word" + if (it == 1) "" else "s" },
             d.replacements.size.takeIf { it > 0 }?.let { "$it replacement" + if (it == 1) "" else "s" },
         ).filterNotNull().joinToString(" · ")
+        buttonSummary.text = if (prefs.buttonFollowsKeyboard) "Follows the keyboard · hold to talk"
+        else "Stays where you put it · hold to move"
         historySummary.text = when (val d = prefs.historyDays) {
             0 -> "Off"
             1 -> "Your dictations, kept 1 day on this phone"

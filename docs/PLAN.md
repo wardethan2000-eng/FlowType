@@ -153,12 +153,16 @@ Flowtype gets its own `PRIVACY.md`.
 - **Tap to start.** While listening, the button opens into a panel: **✕**
   (throw it away, nothing typed), a **live waveform** showing that the mic
   hears you, and **✓** (stop, transcribe, type it). Ethan's call on
-  2026-09-25, replacing "tap again to stop". **Hold to talk** comes later as a
-  setting.
+  2026-09-25, replacing "tap again to stop".
+- **Hold to talk** (Ethan's design, 2026-09-26): with the "Follow the
+  keyboard" button setting, the button always sits just above the keyboard,
+  recording starts the moment a finger lands, and letting go after 0.35 s
+  types it (slide left first to discard; a quick tap still opens the panel).
+  With the default "Stay where I put it", holding drags the button instead.
 - **Hands-free mode** (Phase 3): double-tap to lock recording on; tap to stop.
 - Hold the button (~0.3 s) to drag it anywhere; it remembers its place per
   orientation. It's half see-through while idle so it hides less of the app.
-  (Built in Phase 0; snapping to the edge is still to do.)
+  (Built in Phase 0. Snap-to-edge not built: free placement kept for now.)
 - Haptic tick on start and stop; the waveform follows your voice level.
 
 ### 4.2 Audio capture

@@ -81,4 +81,12 @@ class Prefs(context: Context) {
     var soundsLike: Boolean
         get() = prefs.getBoolean("sounds_like", true)
         set(value) = prefs.edit().putBoolean("sounds_like", value).apply()
+
+    /**
+     * The button always sits just above the keyboard, and holding it talks
+     * (let go to type). Off: it stays where it's dragged, and holding moves it.
+     */
+    var buttonFollowsKeyboard: Boolean
+        get() = prefs.getBoolean("button_follows_keyboard", false)
+        set(value) = prefs.edit().putBoolean("button_follows_keyboard", value).apply()
 }

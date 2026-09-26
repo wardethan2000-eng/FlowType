@@ -205,7 +205,8 @@ class DictationService : AccessibilityService() {
         // The listening panel opens leftward from the button's right edge.
         p.width = width
         if (!dragging) {
-            val saved = prefs.buttonPosition(isLandscape())
+            // "Follow the keyboard" ignores where the button was once dragged.
+            val saved = if (prefs.buttonFollowsKeyboard) null else prefs.buttonPosition(isLandscape())
             if (saved != null) {
                 p.x = saved.first
                 p.y = saved.second
@@ -254,6 +255,7 @@ class DictationService : AccessibilityService() {
         }
 
         override fun onTouch(v: View, e: MotionEvent): Boolean {
+            if (prefs.buttonFollowsKeyboard) return holdToTalk.onTouch(v, e)
             val p = params ?: return false
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -297,6 +299,53 @@ class DictationService : AccessibilityService() {
         }
     }
 
+    private val holdToTalk = HoldToTalk()
+
+    /**
+     * "Follow the keyboard" mode: recording starts the moment the finger lands,
+     * so the first word isn't clipped. Let go within [HOLD_TO_TALK_MS] and it was
+     * a tap: the ✕/✓ panel stays open as usual. Hold longer and letting go types
+     * it, or discards it if the finger slid left past [CANCEL_SLIDE_DP].
+     */
+    private inner class HoldToTalk : View.OnTouchListener {
+        private var downX = 0f
+        private var downAt = 0L
+        private var active = false
+        private var cancelling = false
+        private val holding = Runnable { button?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) }
+
+        override fun onTouch(v: View, e: MotionEvent): Boolean {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    active = state == MicButton.State.IDLE && startDictation()
+                    if (!active) return true
+                    downX = e.rawX
+                    downAt = SystemClock.elapsedRealtime()
+                    cancelling = false
+                    main.postDelayed(holding, HOLD_TO_TALK_MS)
+                }
+                MotionEvent.ACTION_MOVE -> if (active) {
+                    val slidLeft = downX - e.rawX > CANCEL_SLIDE_DP * resources.displayMetrics.density
+                    if (slidLeft != cancelling) {
+                        cancelling = slidLeft
+                        button?.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (active) {
+                    active = false
+                    main.removeCallbacks(holding)
+                    val held = SystemClock.elapsedRealtime() - downAt >= HOLD_TO_TALK_MS
+                    when {
+                        !held && !cancelling -> v.performClick() // a tap: the panel stays open
+                        cancelling || e.actionMasked == MotionEvent.ACTION_CANCEL -> cancelDictation()
+                        else -> stopDictation()
+                    }
+                }
+            }
+            return true
+        }
+    }
+
     private val slop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
 
     private fun setState(s: MicButton.State) {
@@ -306,27 +355,28 @@ class DictationService : AccessibilityService() {
 
     private fun onTap() {
         when (state) {
-            MicButton.State.IDLE -> startDictation()
+            MicButton.State.IDLE -> { startDictation() }
             // While listening, the panel's ✕ and ✓ decide; the circle is hidden.
             MicButton.State.RECORDING, MicButton.State.BUSY -> {}
         }
     }
 
-    private fun startDictation() {
-        val field = editor ?: return
+    /** Returns true if it started listening. */
+    private fun startDictation(): Boolean {
+        val field = editor ?: return false
         if (prefs.testPhraseMode) {
             setState(MicButton.State.BUSY)
             insert(TEST_PHRASE, "test", session, field)
-            return
+            return false
         }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             toast("Open Flowtype and allow the microphone")
-            return
+            return false
         }
         val model = AsrModels.byId(prefs.modelId) ?: AsrModels.DEFAULT
         if (!store.isInstalled(model)) {
             toast("Download a speech model in Flowtype first")
-            return
+            return false
         }
         // Transcribe while you talk when the pause detector is there (PLAN §4.3).
         val live = store.isVadInstalled()
@@ -341,7 +391,7 @@ class DictationService : AccessibilityService() {
         if (!cap.start()) {
             asr.execute { dropChunker() }
             toast("Couldn't open the microphone")
-            return
+            return false
         }
         setOffer(null)
         capture = cap
@@ -351,6 +401,7 @@ class DictationService : AccessibilityService() {
         setState(MicButton.State.RECORDING)
         preloadModel()
         if (cleanupStyle(field) != null) net.execute { cleaner.prewarm() }
+        return true
     }
 
     /** ✕: stop listening and throw the audio away. Nothing is typed. */
@@ -650,6 +701,8 @@ class DictationService : AccessibilityService() {
         const val TEST_PHRASE = "Flowtype insertion test."
         private const val IDLE_RELEASE_MS = 15 * 60 * 1000L
         private const val HOLD_TO_DRAG_MS = 300L
+        private const val HOLD_TO_TALK_MS = 350L
+        private const val CANCEL_SLIDE_DP = 100
         private const val CONTEXT_CHARS = 80
         private const val UNDO_MS = 6_000L
         private const val RETRY_MS = 2 * 60_000L
