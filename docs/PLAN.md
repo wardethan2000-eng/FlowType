@@ -150,13 +150,16 @@ Flowtype gets its own `PRIVACY.md`.
   - the input type, so the button never shows in password fields;
   - the text before the cursor (`getInitialTextBeforeCursor`), which feeds
     smart spacing and cleanup context.
-- **Tap to start, tap to stop** (the default, as in Wispr Flow). **Hold to
-  talk** comes later as a setting.
+- **Tap to start.** While listening, the button opens into a panel: **✕**
+  (throw it away, nothing typed), a **live waveform** showing that the mic
+  hears you, and **✓** (stop, transcribe, type it). Ethan's call on
+  2026-09-25, replacing "tap again to stop". **Hold to talk** comes later as a
+  setting.
 - **Hands-free mode** (Phase 3): double-tap to lock recording on; tap to stop.
-- The button can be dragged, snaps to the edge and remembers its place per
-  orientation.
-- Haptic tick on start and stop; the button pulses with your voice level.
-- Swipe the button away while recording to **cancel** (nothing inserted).
+- Hold the button (~0.3 s) to drag it anywhere; it remembers its place per
+  orientation. It's half see-through while idle so it hides less of the app.
+  (Built in Phase 0; snapping to the edge is still to do.)
+- Haptic tick on start and stop; the waveform follows your voice level.
 
 ### 4.2 Audio capture
 
@@ -614,7 +617,7 @@ developer screens.
 
 - VAD live chunking with padding and join rules, model load policy,
   pre-opened connection, short-utterance skip.
-- Hold-to-talk, swipe-to-cancel, haptics.
+- Hold-to-talk, snap-to-edge, haptics.
 - Spoken formatting commands, per-app styles, text-before-cursor context, smart
   spacing and case.
 - History, undo cleanup, retry.
@@ -716,8 +719,9 @@ developer screens.
 1. Name: **Flowtype**.
 2. Android builds run on the build box: `scripts/remote-build.sh setup` installs
    the SDK there once, and `scripts/remote-build.sh apk` builds.
-3. Trigger: **tap to start, tap to stop**, like Wispr Flow. Hold-to-talk is a
-   later option, not the default.
+3. Trigger: **tap to start**, then ✓ to type it or ✕ to discard, with a live
+   waveform while listening (changed from "tap to stop" on 2026-09-25).
+   Hold-to-talk is a later option, not the default.
 4. Phone: **Samsung Galaxy S25**.
 5. A clean app, not a port of Phone Whisper or its fork (§3).
 6. ASR: **Parakeet TDT 0.6B v2 int8**, fallback 110M transducer; unified 0.6B

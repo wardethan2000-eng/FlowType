@@ -5,16 +5,26 @@ import com.ethanward.flowtype.asr.AsrModels
 
 /** Small settings shared by the screens and the service. */
 class Prefs(context: Context) {
+    companion object {
+        const val TEST_PHRASE_MS = 30 * 60 * 1000L
+    }
+
     private val prefs = context.getSharedPreferences("flowtype", Context.MODE_PRIVATE)
 
     var modelId: String
         get() = prefs.getString("model", null) ?: AsrModels.DEFAULT.id
         set(value) = prefs.edit().putString("model", value).apply()
 
-    /** Insertion test: the button inserts a fixed phrase instead of dictating. */
+    /**
+     * Insertion test: the button inserts a fixed phrase instead of dictating.
+     * It turns itself off after 30 minutes, so it can't be left on by mistake.
+     */
     var testPhraseMode: Boolean
-        get() = prefs.getBoolean("test_phrase", false)
-        set(value) = prefs.edit().putBoolean("test_phrase", value).apply()
+        get() = System.currentTimeMillis() < prefs.getLong("test_phrase_until", 0)
+        set(value) = prefs.edit()
+            .putLong("test_phrase_until", if (value) System.currentTimeMillis() + TEST_PHRASE_MS else 0)
+            .remove("test_phrase")
+            .apply()
 
     var asrThreads: Int
         get() = prefs.getInt("asr_threads", 4)

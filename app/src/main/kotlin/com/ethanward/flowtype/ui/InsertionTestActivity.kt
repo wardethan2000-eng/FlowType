@@ -29,7 +29,7 @@ class InsertionTestActivity : AppCompatActivity() {
         log = InsertionLog(this)
         prefs = Prefs(this)
         page("Insertion test") {
-            check("Button types \"${DictationService.TEST_PHRASE}\" instead of dictating", prefs.testPhraseMode).apply {
+            check("Button types \"${DictationService.TEST_PHRASE}\" instead of dictating (turns itself off after 30 minutes)", prefs.testPhraseMode).apply {
                 setOnCheckedChangeListener { _, on -> prefs.testPhraseMode = on }
             }
             heading("Test fields")

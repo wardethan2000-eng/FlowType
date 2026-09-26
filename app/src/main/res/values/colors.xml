@@ -4,5 +4,8 @@
     <color name="button_idle">#202124</color>
     <color name="button_recording">#E03131</color>
     <color name="button_busy">#495057</color>
+    <color name="panel_background">#EB202124</color>
+    <color name="panel_cancel">#5C5F66</color>
+    <color name="panel_accept">#3B5BDB</color>
     <color name="launcher_background">#3B5BDB</color>
 </resources>

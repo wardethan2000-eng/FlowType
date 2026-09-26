@@ -5,9 +5,13 @@ package com.ethanward.flowtype.service
  * gravity TOP|END: x from the right edge, y from the top.
  */
 object ButtonPlacement {
-    /** Keeps a window of [size] fully on a [width]×[height] screen. */
-    fun clamp(x: Int, y: Int, size: Int, width: Int, height: Int): Pair<Int, Int> =
-        x.coerceIn(0, maxOf(0, width - size)) to y.coerceIn(0, maxOf(0, height - size))
+    /**
+     * Keeps a [w]×[h] window fully on a [screenW]×[screenH] screen. The
+     * listening panel is wider than the button, so near the left edge it
+     * shifts right to fit.
+     */
+    fun clamp(x: Int, y: Int, w: Int, h: Int, screenW: Int, screenH: Int): Pair<Int, Int> =
+        x.coerceIn(0, maxOf(0, screenW - w)) to y.coerceIn(0, maxOf(0, screenH - h))
 
     /**
      * The new position after the finger moved by ([dx], [dy]) from where the

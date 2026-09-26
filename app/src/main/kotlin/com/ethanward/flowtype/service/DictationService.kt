@@ -148,13 +148,16 @@ class DictationService : AccessibilityService() {
             return
         }
         val b = button ?: MicButton(this).also { v ->
-            v.setOnTouchListener(DragOrTap())
+            v.face.setOnTouchListener(DragOrTap())
+            v.onCancel = { cancelDictation() }
+            v.onAccept = { stopDictation() }
             button = v
         }
         val density = resources.displayMetrics.density
         val window = (MicButton.WINDOW_DP * density).toInt()
+        val width = if (state == MicButton.State.RECORDING) (MicButton.PANEL_WINDOW_DP * density).toInt() else window
         val p = params ?: WindowManager.LayoutParams(
-            window, window,
+            width, window,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -166,17 +169,21 @@ class DictationService : AccessibilityService() {
         }
         // Where it was last dragged to; otherwise just above the keyboard at the
         // right edge. While recording with the keyboard gone, stay put.
+        // The listening panel opens leftward from the button's right edge.
+        p.width = width
         if (!dragging) {
             val saved = prefs.buttonPosition(isLandscape())
             if (saved != null) {
-                val bounds = windowManager.currentWindowMetrics.bounds
-                val (x, y) = ButtonPlacement.clamp(saved.first, saved.second, window, bounds.width(), bounds.height())
-                p.x = x
-                p.y = y
+                p.x = saved.first
+                p.y = saved.second
             } else {
-                p.x = (8 * density).toInt()
+                p.x = 0
                 keyboardTop?.let { p.y = it - window }
             }
+            val bounds = windowManager.currentWindowMetrics.bounds
+            val (x, y) = ButtonPlacement.clamp(p.x, p.y, width, window, bounds.width(), bounds.height())
+            p.x = x
+            p.y = y
         }
         b.setState(state)
         if (attached) windowManager.updateViewLayout(b, p) else {
@@ -223,10 +230,10 @@ class DictationService : AccessibilityService() {
                     if (dragging) {
                         val bounds = windowManager.currentWindowMetrics.bounds
                         val (x, y) = ButtonPlacement.dragged(startX, startY, dx, dy)
-                        val (cx, cy) = ButtonPlacement.clamp(x, y, p.width, bounds.width(), bounds.height())
+                        val (cx, cy) = ButtonPlacement.clamp(x, y, p.width, p.height, bounds.width(), bounds.height())
                         p.x = cx
                         p.y = cy
-                        windowManager.updateViewLayout(v, p)
+                        windowManager.updateViewLayout(button, p)
                     } else if (!moved && dx * dx + dy * dy > slop * slop) {
                         // Slid off before the hold: neither a tap nor a drag.
                         moved = true
@@ -260,8 +267,8 @@ class DictationService : AccessibilityService() {
     private fun onTap() {
         when (state) {
             MicButton.State.IDLE -> startDictation()
-            MicButton.State.RECORDING -> stopDictation()
-            MicButton.State.BUSY -> {}
+            // While listening, the panel's ✕ and ✓ decide; the circle is hidden.
+            MicButton.State.RECORDING, MicButton.State.BUSY -> {}
         }
     }
 
@@ -294,6 +301,18 @@ class DictationService : AccessibilityService() {
         preloadModel()
     }
 
+    /** ✕: stop listening and throw the audio away. Nothing is typed. */
+    private fun cancelDictation() {
+        val cap = capture ?: return
+        capture = null
+        val audioMs = cap.stop().size / 16
+        button?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+        Trace.event("dictation_cancelled", "app" to dictationField?.packageName, "audioMs" to audioMs)
+        dictationField = null
+        setState(MicButton.State.IDLE)
+    }
+
+    /** ✓: stop listening, transcribe, type it at the cursor. */
     private fun stopDictation() {
         val cap = capture ?: return
         capture = null
