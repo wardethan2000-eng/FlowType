@@ -19,7 +19,8 @@ data class CleanupConfig(
         val LUNA_FAST = CleanupConfig("luna-fast", "Luna, fast tier", "gpt-6-luna", "none", "fast")
         val NANO = CleanupConfig("nano", "GPT-4.1 nano", "gpt-4.1-nano", null, null)
         val ALL = listOf(LUNA, LUNA_FAST, NANO)
-        val DEFAULT = LUNA
+        /** Ethan's pick, 2026-09-26: Luna's quicker tier, for twice Luna's (tiny) price. */
+        val DEFAULT = LUNA_FAST
 
         fun byId(id: String?) = ALL.firstOrNull { it.id == id } ?: DEFAULT
     }

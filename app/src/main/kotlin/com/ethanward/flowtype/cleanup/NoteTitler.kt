@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
  * small non-streamed request, store: false. Anything odd comes back null and
  * the note keeps its first-words title.
  */
-class NoteTitler(private val keys: ApiKeyStore) {
+class NoteTitler(private val keys: ApiKeyStore, private val usage: UsageStore? = null) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .callTimeout(10, TimeUnit.SECONDS)
@@ -30,7 +30,9 @@ class NoteTitler(private val keys: ApiKeyStore) {
         return runCatching {
             client.newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) return null
-                tidy(outputText(JSONObject(resp.body!!.string())))
+                val json = JSONObject(resp.body!!.string())
+                usageOf(json)?.let { u -> runCatching { usage?.record(config, u) } }
+                tidy(outputText(json))
             }
         }.getOrNull()
     }
@@ -51,6 +53,16 @@ class NoteTitler(private val keys: ApiKeyStore) {
             put("store", false)
             put("max_output_tokens", 24)
             config.serviceTier?.let { put("service_tier", it) }
+        }
+
+        /** The usage block of a non-streamed Responses API answer. */
+        fun usageOf(response: JSONObject): Usage? {
+            val u = response.optJSONObject("usage") ?: return null
+            return Usage(
+                u.optInt("input_tokens"),
+                u.optJSONObject("input_tokens_details")?.optInt("cached_tokens") ?: 0,
+                u.optInt("output_tokens"),
+            )
         }
 
         /** The text of a non-streamed Responses API answer. */

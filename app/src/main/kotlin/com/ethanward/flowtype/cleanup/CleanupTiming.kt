@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
  * (warm), timing connection setup, first streamed token and the whole answer,
  * and reading back how many prompt tokens came from the cache.
  */
-class CleanupTiming(private val apiKey: String) {
+class CleanupTiming(private val apiKey: String, private val usage: UsageStore? = null) {
 
     data class Run(
         val config: String,
@@ -112,6 +112,9 @@ class CleanupTiming(private val apiKey: String) {
             error = e.javaClass.simpleName + (e.message?.let { ": $it" } ?: "")
         }
         val end = System.nanoTime()
+        if (stream.inputTokens >= 0) runCatching {
+            usage?.record(config, Usage(stream.inputTokens, maxOf(0, stream.cachedTokens), maxOf(0, stream.outputTokens)))
+        }
         return Run(
             config = config.label, index = index, cold = cold, http = http,
             connectMs = if (timing.connectStart == 0L) 0 else (timing.connectEnd - timing.connectStart) / 1_000_000,

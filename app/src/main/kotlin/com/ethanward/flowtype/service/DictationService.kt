@@ -43,6 +43,7 @@ import com.ethanward.flowtype.cleanup.AppStyle
 import com.ethanward.flowtype.cleanup.Cleaner
 import com.ethanward.flowtype.cleanup.CleanupConfig
 import com.ethanward.flowtype.cleanup.NoteTitler
+import com.ethanward.flowtype.cleanup.UsageStore
 import com.ethanward.flowtype.dictionary.DictionaryPass
 import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.ethanward.flowtype.history.HistoryEntry
@@ -82,7 +83,7 @@ class DictationService : AccessibilityService() {
     private lateinit var cleaner: Cleaner
     private lateinit var otherAudio: OtherAudio
     private lateinit var notes: NotesStore
-    private val titler by lazy { NoteTitler(keys) }
+    private val titler by lazy { NoteTitler(keys, UsageStore(this)) }
     private val net = Executors.newSingleThreadExecutor { Thread(it, "flowtype-cleanup") }
     private lateinit var windowManager: WindowManager
 
@@ -119,7 +120,7 @@ class DictationService : AccessibilityService() {
         dictionary = DictionaryStore(this)
         history = HistoryStore(this) { prefs.historyDays }
         keys = ApiKeyStore(this)
-        cleaner = Cleaner(keys)
+        cleaner = Cleaner(keys, UsageStore(this))
         otherAudio = OtherAudio(this)
         notes = NotesStore(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager

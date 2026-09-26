@@ -69,7 +69,7 @@ class CleanupTestActivity : AppCompatActivity() {
         thread(name = "flowtype-cleanup-timing") {
             val batch = System.currentTimeMillis()
             try {
-                val timing = CleanupTiming(key)
+                val timing = CleanupTiming(key, com.ethanward.flowtype.cleanup.UsageStore(this@CleanupTestActivity))
                 for (c in configs) {
                     log("== ${c.label}")
                     var last = ""

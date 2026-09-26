@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
  *
  * Calls block; run them off the main thread. Never logs text or the key.
  */
-class Cleaner(private val keys: ApiKeyStore) {
+class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = null) {
 
     enum class Reason(val keyProblem: Boolean = false) {
         NO_KEY, SHORT, OFFLINE, DEADLINE,
@@ -92,13 +92,16 @@ class Cleaner(private val keys: ApiKeyStore) {
         val start = System.nanoTime()
         fun ms() = (System.nanoTime() - start) / 1_000_000
         var firstTokenMs = -1L
+        var streamed: ResponseStream? = null
+        var billed = false
         try {
             call.execute().use { resp ->
                 if (!resp.isSuccessful) {
                     val reason = errorReason(resp.code, resp.body?.string().orEmpty())
                     return Result.Fallback(reason, ms(), resp.code)
                 }
-                val stream = ResponseStream()
+                billed = true
+                val stream = ResponseStream().also { streamed = it }
                 val source = resp.body!!.source()
                 var judged = false
                 while (!stream.done) {
@@ -132,6 +135,7 @@ class Cleaner(private val keys: ApiKeyStore) {
                 return Result.Cleaned(output, firstTokenMs, ms(), stream.cachedTokens, stream.inputTokens)
             }
         } catch (e: InterruptedIOException) {
+            billed = true // OpenAI may finish, and bill, a request we stopped waiting for
             return Result.Fallback(Reason.DEADLINE, ms())
         } catch (e: UnknownHostException) {
             return Result.Fallback(Reason.OFFLINE, ms())
@@ -140,8 +144,29 @@ class Cleaner(private val keys: ApiKeyStore) {
         } catch (e: IOException) {
             Trace.warn("cleanup_io", "error" to e.javaClass.simpleName)
             return Result.Fallback(if (call.isCanceled()) Reason.DEADLINE else Reason.ERROR, ms())
+        } finally {
+            if (billed) record(config, streamed, body.toString())
         }
     }
+
+    /** Tokens as OpenAI reported them, or estimated for a request cut short. */
+    private fun record(config: CleanupConfig, stream: ResponseStream?, requestBody: String) {
+        val store = usage ?: return
+        val s = stream
+        val u = if (s != null && s.inputTokens >= 0) {
+            lastCached = maxOf(0, s.cachedTokens)
+            Usage(s.inputTokens, maxOf(0, s.cachedTokens), maxOf(0, s.outputTokens))
+        } else {
+            val input = CleanupPrompt.estimateTokens(requestBody)
+            Usage(input, minOf(lastCached, input), CleanupPrompt.estimateTokens(s?.text?.toString().orEmpty()), estimated = true)
+        }
+        runCatching { store.record(config, u) }
+    }
+
+    /** Cached tokens on the last complete answer: the best guess for one cut short. */
+    @Volatile private var lastCached = 0
+
+
 
     companion object {
         const val SHORT_WORDS = 3

@@ -24,6 +24,8 @@ import com.ethanward.flowtype.asr.Downloads
 import com.ethanward.flowtype.asr.ModelStore
 import com.ethanward.flowtype.cleanup.ApiKeyStore
 import com.ethanward.flowtype.cleanup.CleanupConfig
+import com.ethanward.flowtype.cleanup.Prices
+import com.ethanward.flowtype.cleanup.UsageStore
 import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.ethanward.flowtype.notes.NotesStore
 import com.ethanward.flowtype.service.DictationService
@@ -125,7 +127,8 @@ class MainActivity : AppCompatActivity() {
             !prefs.cleanupEnabled -> "Off"
             !keys.has() -> "Add your OpenAI key to turn it on"
             prefs.keyProblem != null -> "Key problem: " + CleanupSettingsActivity.problemText(prefs.keyProblem!!)
-            else -> "On · " + CleanupConfig.byId(prefs.cleanupModel).label
+            else -> "On · " + CleanupConfig.byId(prefs.cleanupModel).label +
+                " · " + Prices.format(UsageStore(this).summary().week.dollars) + " this week"
         }
         renderStatus(model.label, store.isInstalled(model))
     }

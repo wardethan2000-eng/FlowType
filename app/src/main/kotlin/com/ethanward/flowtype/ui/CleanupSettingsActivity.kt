@@ -15,6 +15,8 @@ import com.ethanward.flowtype.Prefs
 import com.ethanward.flowtype.cleanup.ApiKeyStore
 import com.ethanward.flowtype.cleanup.Cleaner
 import com.ethanward.flowtype.cleanup.CleanupConfig
+import com.ethanward.flowtype.cleanup.Prices
+import com.ethanward.flowtype.cleanup.UsageStore
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import kotlin.concurrent.thread
@@ -30,7 +32,8 @@ class CleanupSettingsActivity : AppCompatActivity() {
     private lateinit var keyStatus: TextView
     private lateinit var keyField: EditText
     private lateinit var testResult: TextView
-    private val cleaner by lazy { Cleaner(keys) }
+    private val cleaner by lazy { Cleaner(keys, UsageStore(this)) }
+    private lateinit var costs: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +56,13 @@ class CleanupSettingsActivity : AppCompatActivity() {
                     setPadding(dp(16), dp(8), dp(16), dp(8))
                     setOnCheckedChangeListener { _, on -> prefs.cleanupEnabled = on }
                 })
+            }
+
+            section("What it costs")
+            card {
+                costs = text()
+                text("Worked out from the tokens each request used and OpenAI's list prices, so it's an " +
+                    "estimate; your OpenAI bill is the final word.", secondary = true)
             }
 
             section("OpenAI API key")
@@ -80,8 +90,8 @@ class CleanupSettingsActivity : AppCompatActivity() {
             card {
                 val group = RadioGroup(context)
                 val descriptions = mapOf(
-                    CleanupConfig.LUNA.id to "Recommended. Careful and cheap.",
-                    CleanupConfig.LUNA_FAST.id to "Luna on OpenAI's fast tier: quicker, twice the price.",
+                    CleanupConfig.LUNA.id to "Careful and cheapest, but can be slow to answer.",
+                    CleanupConfig.LUNA_FAST.id to "Recommended. Luna on OpenAI's fast tier: quicker, twice the price.",
                     CleanupConfig.NANO.id to "Older and quick; a little less careful.",
                 )
                 for (c in CleanupConfig.ALL) {
@@ -113,6 +123,18 @@ class CleanupSettingsActivity : AppCompatActivity() {
             }
         }
         showKey()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        showCosts()
+    }
+
+    private fun showCosts() {
+        val s = UsageStore(this).summary()
+        fun line(label: String, t: UsageStore.Totals) =
+            "$label: ${Prices.format(t.dollars)}" + if (t.calls > 0) " (${t.calls} request${if (t.calls == 1) "" else "s"})" else ""
+        costs.text = listOf(line("Today", s.today), line("Last 7 days", s.week), line("This month", s.month)).joinToString("\n")
     }
 
     private fun showKey() {
@@ -174,6 +196,7 @@ class CleanupSettingsActivity : AppCompatActivity() {
                     }
                 }
                 showKey()
+                showCosts()
             }
         }
     }

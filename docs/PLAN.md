@@ -611,6 +611,13 @@ With no cache hits at all it's ≈ $0.55 (cache writes cost 1.25×), and the
 `fast` tier doubles either figure. Set a monthly hard limit on the OpenAI
 account (for example $3) as a safety net.
 
+**Cost meter** (2026-09-26): every OpenAI request records the tokens OpenAI
+reports (estimated for a request cut short at the deadline) and prices them
+at the list prices above. The AI cleanup screen shows today, the last 7 days
+and this calendar month; the home screen shows this week. Daily totals only,
+no text, kept a year. **Default model** is now Luna's fast tier (Ethan's pick
+for speed): about $0.35–0.40 a month at the usage above.
+
 ---
 
 ## 7. Phases
