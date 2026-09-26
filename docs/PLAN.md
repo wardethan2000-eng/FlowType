@@ -276,6 +276,11 @@ Application order:
    the literal matcher can't ("decal forged" → "DecalForge").
 3. **Pass 2 (after AI)**: case-fix any dictionary word the LLM re-cased
    ("Decalforge" → "DecalForge"), then expand snippet tokens.
+   - Built 2026-09-25 (before cleanup exists, passes 1 and 2 run back to back
+     on the ASR text). Two rules found while building it: a CamelCase Word
+     also matches its parts heard apart ("decal forge", "decal-forge"), and
+     replacement outputs count as spellings only if they contain a capital,
+     so "gonna" → "going to" can still start a sentence as "Going to".
 
 Fuzzy matching for words (Phase 2): a phonetic key (Double Metaphone) plus
 edit distance on 1–3-word windows, only for Word entries, only when confidence is
