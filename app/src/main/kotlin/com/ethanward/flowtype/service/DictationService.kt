@@ -54,7 +54,7 @@ import com.ethanward.flowtype.insert.InsertionRecord
 import com.ethanward.flowtype.insert.InsertionRules
 import com.ethanward.flowtype.insert.Outcome
 import com.ethanward.flowtype.notes.NotesStore
-import com.ethanward.flowtype.notes.VolumeDoublePress
+import com.ethanward.flowtype.notes.VolumeHold
 import com.ethanward.flowtype.overlay.ButtonPlacement
 import com.ethanward.flowtype.overlay.MicButton
 import java.util.concurrent.Executors
@@ -157,13 +157,21 @@ class DictationService : AccessibilityService() {
         }
     }
 
-    // ---- Voice notes: double-press volume up (PLAN §4.11) ----
+    // ---- Voice notes: hold volume up (PLAN §4.11) ----
 
-    private val volumeDouble = VolumeDoublePress()
-    /** Volume-up key-ups to swallow, matching key-downs we kept. */
-    private var keptVolumeDown = false
+    private val volumeHold = VolumeHold()
+    /** Key-ups to swallow: the press that saved a note. */
+    private var swallowVolumeUp = false
     private var noteCapture: AudioCapture? = null
     private var noteOverlay: MicButton? = null
+    private val holdTimer = Runnable {
+        if (volumeHold.onTimer(SystemClock.uptimeMillis())) {
+            if (!startNote()) {
+                // Couldn't start (no mic permission, no model…): behave like a tap after all.
+                raiseVolume()
+            }
+        }
+    }
 
     /** Whether Android is sending us key events (needs the service switched on since the update). */
     val filtersKeys: Boolean
@@ -172,49 +180,59 @@ class DictationService : AccessibilityService() {
                 it.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_REQUEST_FILTER_KEY_EVENTS != 0
         } == true
 
+    /**
+     * Volume up: hold ~0.6 s to take a note; a tap still raises the volume
+     * (applied on release). During a note, a press saves it. In a call, or
+     * with notes off, keys pass straight through untouched.
+     */
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode != KeyEvent.KEYCODE_VOLUME_UP || !prefs.volumeNotes) return false
+        val audio = getSystemService(AudioManager::class.java)
+        if (audio.mode != AudioManager.MODE_NORMAL && noteCapture == null) return false
         when (event.action) {
             KeyEvent.ACTION_DOWN -> {
-                if (event.repeatCount > 0) return keptVolumeDown
+                if (event.repeatCount > 0) return true
                 if (noteCapture != null) {
-                    // Volume up again while taking a note: save it.
-                    keptVolumeDown = true
+                    swallowVolumeUp = true
                     main.post { finishNote() }
                     return true
                 }
-                if (volumeDouble.onDown(event.eventTime) && capture == null && noteOverlay == null) {
-                    keptVolumeDown = true
-                    // The first press already raised the volume: put it back.
-                    getSystemService(AudioManager::class.java).adjustSuggestedStreamVolume(
-                        AudioManager.ADJUST_LOWER, AudioManager.USE_DEFAULT_STREAM_TYPE, 0,
-                    )
-                    main.post { startNote() }
-                    return true
-                }
-                keptVolumeDown = false
-                return false
+                volumeHold.onDown(event.eventTime)
+                main.removeCallbacks(holdTimer)
+                main.postDelayed(holdTimer, volumeHold.holdMs)
+                return true
             }
             KeyEvent.ACTION_UP -> {
-                val kept = keptVolumeDown
-                keptVolumeDown = false
-                return kept
+                if (swallowVolumeUp) {
+                    swallowVolumeUp = false
+                    return true
+                }
+                main.removeCallbacks(holdTimer)
+                if (volumeHold.onUp()) main.post { raiseVolume() }
+                return true
             }
         }
         return false
     }
 
-    /** Starts a voice note: listen with a floating ✕/✓ panel, no text field needed. */
-    fun startNote() {
-        if (noteCapture != null || noteOverlay != null || capture != null) return
+    /** The tap we held back: one step up on whatever the volume keys control now, with the usual slider. */
+    private fun raiseVolume() {
+        getSystemService(AudioManager::class.java).adjustSuggestedStreamVolume(
+            AudioManager.ADJUST_RAISE, AudioManager.USE_DEFAULT_STREAM_TYPE, AudioManager.FLAG_SHOW_UI,
+        )
+    }
+
+    /** Starts a voice note: listen with a floating ✕/✓ panel, no text field needed. True if listening. */
+    fun startNote(): Boolean {
+        if (noteCapture != null || noteOverlay != null || capture != null) return false
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             toast("Open Flowtype and allow the microphone")
-            return
+            return false
         }
         val model = AsrModels.byId(prefs.modelId) ?: AsrModels.DEFAULT
         if (!store.isInstalled(model)) {
             toast("Download a speech model in Flowtype first")
-            return
+            return false
         }
         if (prefs.pauseOtherAudio) otherAudio.pause()
         val overlay = MicButton(this).apply {
@@ -238,15 +256,23 @@ class DictationService : AccessibilityService() {
         if (!cap.start()) {
             otherAudio.resume()
             toast("Couldn't open the microphone")
-            return
+            return false
         }
-        windowManager.addView(overlay, p)
+        val shown = runCatching { windowManager.addView(overlay, p) }
+        if (shown.isFailure) {
+            cap.stop()
+            otherAudio.resume()
+            Trace.warn("note_overlay_failed", "error" to shown.exceptionOrNull()?.javaClass?.simpleName)
+            toast("Couldn't show the note panel")
+            return false
+        }
         noteOverlay = overlay
         noteCapture = cap
         overlay.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-        toast("Taking a note. Press volume up or ✓ when you're done.")
+        toast("Taking a note. Press volume up or tap ✓ when you're done.")
         preloadModel()
         Trace.event("note_started")
+        return true
     }
 
     private fun cancelNote() {

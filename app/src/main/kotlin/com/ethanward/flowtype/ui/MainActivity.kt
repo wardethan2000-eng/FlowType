@@ -114,7 +114,7 @@ class MainActivity : AppCompatActivity() {
         ).filterNotNull().joinToString(" · ")
         val noteCount = NotesStore(this).list().size
         notesSummary.text = (if (noteCount == 0) "No notes yet" else "$noteCount note" + if (noteCount == 1) "" else "s") +
-            if (prefs.volumeNotes) " · double-press volume up to add one" else ""
+            if (prefs.volumeNotes) " · hold volume up to add one" else ""
         buttonSummary.text = if (prefs.buttonFollowsKeyboard) "Follows the keyboard · hold to talk"
         else "Stays where you put it · hold to move"
         historySummary.text = when (val d = prefs.historyDays) {

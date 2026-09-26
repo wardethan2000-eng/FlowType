@@ -542,11 +542,15 @@ share and nobody else's usage lands on your bill.
 
 ### 4.11 Voice notes (added 2026-09-26)
 
-- **Trigger**: double-press volume up (within 0.4 s), anywhere, screen on
-  (lock screen included; Android sends no keys to accessibility services with
-  the screen off). The first press changes the volume as usual; Flowtype keeps
-  the second and steps the volume back, so the net change is zero. Volume up
-  again, or ✓, saves; ✕ discards. Also a "Take a note now" button.
+- **Trigger**: hold volume up for ~0.6 s, anywhere, screen on (lock screen
+  included; Android sends no keys to accessibility services with the screen
+  off). Every press is held back on key-down; released sooner it was a tap
+  and the volume goes up one step on release. Holding to sweep the volume up
+  no longer works while notes are on; tapping does. Calls are never touched.
+  Volume up again, or ✓, saves; ✕ discards. Also a "Take a note now" button.
+  (The first version used a double press, 2026-09-26; quick taps to raise the
+  volume looked the same, so every second tap was eaten and the volume
+  couldn't be turned up. Replaced the same day.)
 - A floating ✕/waveform/✓ panel, since there's no text field. Same pipeline:
   on-phone transcription, spoken commands, dictionary, cleanup in the "notes"
   style when it's on, other audio paused.

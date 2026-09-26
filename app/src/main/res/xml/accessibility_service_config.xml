@@ -4,8 +4,8 @@
      button, and commitText inserts at the cursor (PLAN §4.1, §4.6).
      Window events feed the keyboard-visible check; text-changed events only
      re-check the text box's size (its text is never read).
-     Key events: only volume up is looked at, for the double press that starts
-     a voice note (PLAN §4.11); everything else passes straight through. -->
+     Key events: only volume up is looked at, to tell a hold (which starts
+     a voice note, PLAN §4.11) from a tap; everything else passes through. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowsChanged|typeWindowStateChanged|typeViewTextChanged"
     android:accessibilityFeedbackType="feedbackGeneric"

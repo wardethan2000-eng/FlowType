@@ -22,7 +22,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 
 /**
- * Voice notes (PLAN §4.11): double-press volume up anywhere, speak, and the
+ * Voice notes (PLAN §4.11): hold volume up anywhere, speak, and the
  * note lands here. Each one can go to Google Keep in one tap (Keep has no API
  * for personal accounts, so Keep's own save card does the saving).
  */
@@ -40,7 +40,7 @@ class NotesActivity : AppCompatActivity() {
         page("Notes") {
             card(padded = false) {
                 addView(MaterialSwitch(context).apply {
-                    text = "Double-press volume up to take a note"
+                    text = "Hold volume up to take a note"
                     isChecked = prefs.volumeNotes
                     setPadding(dp(16), dp(8), dp(16), 0)
                     setOnCheckedChangeListener { _, on ->
@@ -94,8 +94,8 @@ class NotesActivity : AppCompatActivity() {
             service == null -> "Flowtype's service is off. Turn it on in Accessibility settings."
             !service.filtersKeys -> "Android isn't passing volume keys to Flowtype yet. Turn Flowtype off and on " +
                 "again in Accessibility settings."
-            else -> "Works whenever the screen is on, even on the lock screen. Press volume up again, or tap ✓, " +
-                "to save; ✕ throws it away."
+            else -> "Hold volume up for about half a second, whenever the screen is on (even the lock screen). " +
+                "Tapping it still changes the volume. Press volume up again, or tap ✓, to save; ✕ throws it away."
         }
         if (service != null && prefs.volumeNotes && !service.filtersKeys) {
             status.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }

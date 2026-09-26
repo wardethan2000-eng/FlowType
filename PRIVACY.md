@@ -17,11 +17,12 @@ collects nothing.
 - **History**: your last 50 dictations are kept on the phone, in the app's
   private storage, for 7 days by default (1 or 30 days, or off, in History).
   They're never uploaded, backed up or logged, and "Delete all" removes them.
-- **Notes** you dictate (double-press volume up) are kept on the phone, in the
+- **Notes** you dictate (hold volume up) are kept on the phone, in the
   app's private storage, until you delete them. "Send to Keep" hands one note
   to Google Keep only when you tap it.
-- **Volume keys**: the service looks only at volume up, to spot the double
-  press that starts a note. Every other key passes straight through.
+- **Volume keys**: the service looks only at volume up, to tell a hold (start
+  a note) from a tap (change the volume). Every other key passes straight
+  through.
 - **Logs** hold timings, lengths and app names only, never what you said.
 - Speech models are downloaded from sherpa-onnx's releases on GitHub.
 
