@@ -158,6 +158,14 @@ fun LinearLayout.navRow(title: String, subtitle: String = "", onClick: () -> Uni
         setTextAppearance(M.style.TextAppearance_Material3_BodyMedium)
         setTextColor(context.themeColor(M.attr.colorOnSurfaceVariant))
         visibility = if (subtitle.isEmpty()) View.GONE else View.VISIBLE
+        // Callers fill the subtitle in later: show it once it has text.
+        addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                visibility = if (s.isNullOrEmpty()) View.GONE else View.VISIBLE
+            }
+        })
     }
     texts.addView(sub)
     row.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
