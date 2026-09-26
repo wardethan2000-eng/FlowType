@@ -28,6 +28,13 @@ crashed it. Gradle, Kotlin compiles and unit tests all go through
 so a Flowtype build waits its turn behind DecalForge jobs rather than competing
 with them. If the box is unreachable, say so and ask; don't build locally.
 
+**GitHub Actions** (`.github/workflows/android.yml`) runs the same tests and
+APK build on every push to main and on PRs; the repo is public, so its standard
+runners cost nothing. `scripts/ci-apk.sh` waits for a pushed commit's run and
+downloads its APK. The APK is signed with the box's debug key (the
+`DEBUG_KEYSTORE_B64` secret), so it installs over the box's builds. Use the box
+for uncommitted work, CI for anything pushed.
+
 `adb` is the exception: it is light and runs on the laptop, where the phone is.
 
 ## Rules that matter here
@@ -50,7 +57,8 @@ with them. If the box is unreachable, say so and ask; don't build locally.
 
 ## Definition of Done
 
-- [ ] `scripts/remote-build.sh apk` and `scripts/remote-build.sh test` are clean.
+- [ ] Tests and the APK build are clean: `scripts/remote-build.sh test` / `apk`
+      on the box, or the pushed commit's GitHub Actions run.
 - [ ] New logic has JVM unit tests (dictionary, guards, prompt building,
       insertion maths especially).
 - [ ] Behaviour on screen changed → installed on the S25 and tried in the apps

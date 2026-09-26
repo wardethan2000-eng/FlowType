@@ -1,0 +1,70 @@
+# Unit tests and the debug APK on GitHub's own runners (free for a public
+# repo). Same steps as scripts/remote-build.sh test/apk on the build box.
+#
+# The APK is signed with the build box's debug key, kept in the
+# DEBUG_KEYSTORE_B64 secret, so it installs over what's on the phone without
+# dropping the accessibility permission. Fetch it with scripts/ci-apk.sh.
+name: android
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: sherpa-onnx AAR cache
+        uses: actions/cache@v4
+        with:
+          path: ~/android/downloads
+          key: sherpa-onnx-${{ hashFiles('scripts/fetch-sherpa-onnx.sh') }}
+
+      - name: Fetch sherpa-onnx AAR (pinned SHA-256)
+        run: scripts/fetch-sherpa-onnx.sh
+
+      - name: Debug signing key
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$DEBUG_KEYSTORE_B64" ]; then
+            mkdir -p ~/.android
+            echo "$DEBUG_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+          else
+            echo "::warning::no DEBUG_KEYSTORE_B64 secret: the APK won't install over the phone's copy"
+          fi
+
+      - name: Unit tests
+        run: ./gradlew --console=plain testDebugUnitTest
+
+      - name: Debug APK
+        run: ./gradlew --console=plain assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flowtype-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-reports-${{ github.sha }}
+          path: app/build/reports/tests/
+          retention-days: 7

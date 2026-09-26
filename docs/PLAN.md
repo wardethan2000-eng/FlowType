@@ -669,7 +669,9 @@ developer screens.
   is an open decision (§11). Either way, recordings, keys and signing keys never
   go in it.
 - **Builds don't run on the laptop.** They run on the build box (CT 142)
-  through `scripts/remote-build.sh`, in the same queue as DecalForge's jobs.
+  through `scripts/remote-build.sh`, in the same queue as DecalForge's jobs,
+  and on GitHub Actions for every push (free while the repo is public; if it
+  goes private, CI moves to the box's self-hosted runner).
   The JDK and Android SDK live in `~/android` on the box (about 1.5 GB, plus
   Gradle caches); see `scripts/builder/setup-android-sdk.sh`.
 - **sherpa-onnx v1.13.8** (2026-09-10), from the AAR attached to its GitHub

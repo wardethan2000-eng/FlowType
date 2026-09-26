@@ -24,6 +24,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var health: TextView
     private lateinit var models: LinearLayout
     private val progress = HashMap<String, String>()
+    private val statusLines = HashMap<String, TextView>()
     private var downloads = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,14 +76,14 @@ class MainActivity : AppCompatActivity() {
         renderModels()
     }
 
+    /** Rebuilt only when a model's state changes; progress just updates its line. */
     private fun renderModels() {
         models.removeAllViews()
+        statusLines.clear()
         for (m in AsrModels.ALL) {
             val installed = store.isInstalled(m)
             val selected = prefs.modelId == m.id
-            models.text("${m.label}\n${m.bytes / 1_000_000} MB download · " +
-                (progress[m.id] ?: if (installed) "downloaded" else "not downloaded") +
-                if (selected) " · used for dictation" else "")
+            statusLines[m.id] = models.text(modelLine(m))
             models.row {
                 if (!installed) button("Download") { install(m) }.isEnabled = progress[m.id] == null
                 else {
@@ -91,11 +92,22 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        val vad = if (store.isVadInstalled()) "downloaded" else progress["vad"] ?: "not downloaded"
-        models.text("Silero VAD (for the bench's chunked decoding) · $vad")
-        if (!store.isVadInstalled() && progress["vad"] == null) {
-            models.button("Download VAD") { installVad() }
+        statusLines["vad"] = models.text(vadLine())
+        if (!store.isVadInstalled()) {
+            models.button("Download VAD") { installVad() }.isEnabled = progress["vad"] == null
         }
+    }
+
+    private fun modelLine(m: AsrModel) = "${m.label}\n${m.bytes / 1_000_000} MB download · " +
+        (progress[m.id] ?: if (store.isInstalled(m)) "downloaded" else "not downloaded") +
+        if (prefs.modelId == m.id) " · used for dictation" else ""
+
+    private fun vadLine() = "Silero VAD (for the bench's chunked decoding) · " +
+        (progress["vad"] ?: if (store.isVadInstalled()) "downloaded" else "not downloaded")
+
+    private fun showProgress(key: String) {
+        val line = statusLines[key] ?: return
+        line.text = AsrModels.byId(key)?.let(::modelLine) ?: vadLine()
     }
 
     private fun install(m: AsrModel) = background(m.id) { report -> store.install(m, report) }
@@ -110,7 +122,10 @@ class MainActivity : AppCompatActivity() {
             val result = runCatching {
                 work { done, total ->
                     val text = if (done < 0) "unpacking…" else "${done * 100 / total}% downloaded"
-                    runOnUiThread { progress[key] = text; renderModels() }
+                    runOnUiThread {
+                        progress[key] = text
+                        showProgress(key)
+                    }
                 }
             }
             runOnUiThread {

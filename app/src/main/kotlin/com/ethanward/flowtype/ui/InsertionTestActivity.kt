@@ -38,7 +38,8 @@ class InsertionTestActivity : AppCompatActivity() {
             text("WebView: a textarea and a rich-text (contenteditable) box")
             addView(
                 WebView(context).apply {
-                    loadData(WEB_FIELDS, "text/html", "utf-8")
+                    // loadData would read "#" in the markup as a URL fragment and drop the rest.
+                    loadDataWithBaseURL(null, WEB_FIELDS, "text/html", "utf-8", null)
                 },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(260)),
             )
