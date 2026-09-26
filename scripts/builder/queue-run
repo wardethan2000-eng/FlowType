@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# A copy of DecalForge's scripts/builder/queue-run, so Flowtype jobs join the
+# same queue (~/work/.queue) on the box. Change both copies together; the Rust
+# parts below do nothing for a Gradle job.
+#
+# The build box's one queue. Every heavy job scripts/remote-build.sh sends runs
+# through here, from whichever checkout it came:
+#
+#   queue-run CHECKOUT MODE COMMAND...
+#
+# 1. One job per checkout at a time (its tree and target/ are shared by all its
+#    jobs): the per-checkout lock ~/work/.lock-CHECKOUT, as before.
+# 2. At most SLOTS jobs on the box at once, first come first served. Before
+#    this, every checkout had only its own lock, so three sessions compiled the
+#    same engine side by side on 6 cores and each ran at a third of the speed.
+#    Taking turns finishes each job in its own time and the queue sooner.
+# 3. Each running job gets its share of the cores (CARGO_BUILD_JOBS), and goes
+#    through sccache when the box has it, so crates another checkout already
+#    compiled come out of the cache instead of the compiler.
+#
+# SLOTS: ~/work/.slots if it holds a number, else 2. Two release links at once
+# can reach the box's 6 GB; drop it to 1 there if they get killed.
+# `scripts/remote-build.sh queue` shows what is running and what is waiting.
+set -euo pipefail
+
+work="$HOME/work"
+queue="$work/.queue"
+
+# `queue-run --status`: what is running and what waits, oldest first.
+if [ "${1:-}" = "--status" ]; then
+  echo "slots: $(cat "$work/.slots" 2>/dev/null || echo 2)"
+  now=$(date +%s)
+  shown=0
+  for t in "$queue"/*; do
+    [ -e "$t" ] || continue
+    field() { sed -n "s/^$1=//p" "$t"; }
+    kill -0 "$(field pid)" 2>/dev/null || continue
+    state=$(field state); slot=$(field slot)
+    printf '%-22s %-6s %-28s %6ss  %s\n' "$state${slot:+ (slot $slot)}" "$(field mode)" "$(field checkout)" \
+      "$(( now - $(field since) ))" "$(field command | cut -c1-70)"
+    shown=1
+  done
+  [ "$shown" = 1 ] || echo "nothing running or waiting"
+  exit 0
+fi
+
+name="$1"
+mode="$2"
+shift 2
+job="$*"
+mkdir -p "$queue"
+slots=$(cat "$work/.slots" 2>/dev/null || echo 2)
+[[ "$slots" =~ ^[1-9][0-9]*$ ]] || slots=2
+
+# A ticket per job: its name orders the queue (arrival time), its body says
+# what it is. Removed on any exit.
+ticket="$queue/$(date +%s%N)-$$"
+describe() {
+  printf 'checkout=%s\nmode=%s\npid=%s\nsince=%s\nstate=%s\nslot=%s\ncommand=%s\n' \
+    "$name" "$mode" "$$" "$(date +%s)" "$1" "${2:-}" "$job"
+}
+cleanup() { rm -f "$ticket"; }
+trap cleanup EXIT
+trap 'exit 130' INT TERM HUP
+
+# Forget tickets whose job is gone (killed, box restarted).
+for stale in "$queue"/*; do
+  [ -e "$stale" ] || continue
+  pid=$(sed -n 's/^pid=//p' "$stale")
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || rm -f "$stale"
+done
+
+# sccache runs a server in the background, started by the first compile that
+# needs it. Start it here, before any lock is taken: a server started by the job
+# would inherit the lock descriptors and hold this slot for good.
+if command -v sccache >/dev/null 2>&1; then
+  SCCACHE_DIR="${SCCACHE_DIR:-$HOME/.cache/sccache}" SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-8G}" \
+    sccache --start-server >/dev/null 2>&1 || true
+fi
+
+describe waiting-for-checkout >"$ticket"
+exec 8>"$work/.lock-$name"
+flock 8
+
+# Wait for a slot, in arrival order: only the oldest waiters, as many as there
+# are free slots, try to take one.
+describe waiting >"$ticket"
+slot=""
+while [ -z "$slot" ]; do
+  waiting=$(grep -l '^state=waiting$' "$queue"/* 2>/dev/null | sort || true)
+  position=$(printf '%s\n' "$waiting" | grep -n -x -F "$ticket" | cut -d: -f1 || true)
+  running=$( (grep -l '^state=running$' "$queue"/* 2>/dev/null || true) | wc -l)
+  if [ -n "$position" ] && [ "$position" -le $(( slots - running )) ]; then
+    for n in $(seq 1 "$slots"); do
+      exec 9>"$work/.slot-$n"
+      if flock -n 9; then slot=$n; break; fi
+      exec 9>&-
+    done
+  fi
+  [ -n "$slot" ] || sleep 2
+done
+describe running "$slot" >"$ticket"
+
+# The named stable toolchain, not whatever the box's default is at the moment
+# (CI moves it). A job that names its own — the threaded bundle's nightly —
+# still gets that one.
+if [ -z "${RUSTUP_TOOLCHAIN:-}" ] && [ -n "${DECALFORGE_STABLE:-}" ]; then
+  export RUSTUP_TOOLCHAIN="$DECALFORGE_STABLE"
+fi
+
+cores=$(nproc)
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(( cores / slots > 0 ? cores / slots : 1 ))}"
+if command -v sccache >/dev/null 2>&1 && [ -z "${RUSTC_WRAPPER:-}" ]; then
+  export RUSTC_WRAPPER=sccache
+  export SCCACHE_DIR="${SCCACHE_DIR:-$HOME/.cache/sccache}"
+  export SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-8G}"
+fi
+
+# The job, not exec'd: the trap above has to remove the ticket when it ends.
+# Its own copies of the lock descriptors are closed, so nothing it leaves running
+# can keep holding them; this script holds them until the job ends.
+nice -n 10 "$@" 8>&- 9>&-
