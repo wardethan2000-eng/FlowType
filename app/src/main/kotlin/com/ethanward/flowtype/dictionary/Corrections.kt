@@ -17,10 +17,17 @@ object Corrections {
      * The word that replaced one of [typed]'s in [now] (the field's text near
      * the cursor), or null. Words already in [known] aren't offered again.
      */
-    fun find(typed: String, now: CharSequence, known: Set<String>): String? {
+    fun find(typed: String, now: CharSequence, known: Set<String>): String? = check(typed, now, known).word
+
+    /** [find]'s answer, and why there's no word when there isn't one; [why] is for traces. */
+    class Check(val word: String?, val why: String)
+
+    fun check(typed: String, now: CharSequence, known: Set<String>): Check {
         val t = words(typed)
         val c = words(now.toString())
-        if (t.size < MIN_WORDS || c.size < t.size) return null
+        if (t.size < MIN_WORDS) return Check(null, "short_dictation")
+        if (c.size < t.size) return Check(null, "fewer_words")
+        var changedMany = false
         for (start in 0..c.size - t.size) {
             var diff = -1
             var ok = true
@@ -37,15 +44,17 @@ object Corrections {
                 }
                 diff = j
             }
+            if (!ok) changedMany = true
             if (!ok || diff < 0) continue
             val word = c[start + diff].bare
-            if (word.count { it.isLetter() } < 2 || known.any { it == word }) return null
+            if (word.count { it.isLetter() } < 2) return Check(null, "too_short")
+            if (known.any { it == word }) return Check(null, "known")
             // Words are for spellings the phone gets wrong: names, brands, PETG. An
             // ordinary lowercase word ("Bambu" put back to "bamboo") needs no entry.
-            if (word.none { it.isUpperCase() || it.isDigit() }) return null
-            return word
+            if (word.none { it.isUpperCase() || it.isDigit() }) return Check(null, "lowercase")
+            return Check(word, "offered")
         }
-        return null
+        return Check(null, if (changedMany) "no_single_change" else "unchanged")
     }
 
     private class Word(val bare: String, val endsSentence: Boolean)

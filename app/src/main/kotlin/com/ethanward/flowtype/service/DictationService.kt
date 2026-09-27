@@ -821,16 +821,22 @@ class DictationService : AccessibilityService() {
         val w = learnWatch ?: return@Runnable
         if (session != w.session || SystemClock.elapsedRealtime() > w.until) {
             learnWatch = null
+            Trace.event("learn_check", "why" to if (session != w.session) "field_changed" else "expired")
             return@Runnable
         }
-        val method = inputMethod ?: return@Runnable
+        val method = inputMethod ?: return@Runnable Trace.event("learn_check", "why" to "no_input_method")
         io.execute {
             val around = runCatching {
                 method.currentInputConnection?.getSurroundingText(LEARN_CONTEXT, LEARN_CONTEXT, 0)?.text?.toString()
-            }.getOrNull() ?: return@execute
-            val word = Corrections.find(w.typed, around, dictionary.load().words.toSet()) ?: return@execute
+            }.getOrNull() ?: return@execute Trace.event("learn_check", "why" to "no_text")
+            val check = Corrections.check(w.typed, around, dictionary.load().words.toSet())
+            // Why nothing was offered, to find where auto-learn stops. Never the text.
+            if (check.word == null) Trace.event("learn_check", "why" to check.why, "typedChars" to w.typed.length, "aroundChars" to around.length)
+            val word = check.word ?: return@execute
             main.post {
-                if (learnWatch !== w || session != w.session || state != MicButton.State.IDLE) return@post
+                if (learnWatch !== w || session != w.session || state != MicButton.State.IDLE) {
+                    return@post Trace.event("learn_check", "why" to "stale")
+                }
                 learnWatch = null
                 Trace.event("learn_offered", "chars" to word.length)
                 setOffer(Offer.Learn(word), LEARN_OFFER_MS)

@@ -45,4 +45,15 @@ class CorrectionsTest {
     fun anOrdinaryLowercaseWordIsntOffered() {
         assertNull(Corrections.find("I printed it on the Bambu today.", "I printed it on the bamboo today.", emptySet()))
     }
+
+    @Test
+    fun checkSaysWhyNothingWasOffered() {
+        assertEquals("offered", Corrections.check(typed, "I printed it on the Bambu today.", emptySet()).why)
+        assertEquals("unchanged", Corrections.check(typed, typed, emptySet()).why)
+        assertEquals("lowercase", Corrections.check(typed, "I printed it on the bamboos today.", emptySet()).why)
+        assertEquals("known", Corrections.check(typed, "I printed it on the Bambu today.", setOf("Bambu")).why)
+        assertEquals("short_dictation", Corrections.check("the bamboo", "the Bambu", emptySet()).why)
+        assertEquals("fewer_words", Corrections.check(typed, "printed", emptySet()).why)
+        assertEquals("no_single_change", Corrections.check(typed, "I printed it on the Bambu yesterday.", emptySet()).why)
+    }
 }
