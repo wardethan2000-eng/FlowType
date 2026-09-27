@@ -56,4 +56,10 @@ class CorrectionsTest {
         assertEquals("fewer_words", Corrections.check(typed, "printed", emptySet()).why)
         assertEquals("no_single_change", Corrections.check(typed, "I printed it on the Bambu yesterday.", emptySet()).why)
     }
+
+    @Test
+    fun aSentMessageLeavesTheField() {
+        assertEquals(true, Corrections.check(typed, "", emptySet()).dictationGone)
+        assertEquals(false, Corrections.check(typed, "I printed it on the Bambu today.", emptySet()).dictationGone)
+    }
 }

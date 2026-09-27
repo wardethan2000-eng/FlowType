@@ -352,10 +352,11 @@ class DictationService : AccessibilityService() {
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
                 main.removeCallbacks(refreshKeyboard)
                 main.postDelayed(refreshKeyboard, 50)
-                // Auto-learn: look for a corrected word once the typing settles.
+                // Auto-learn: read the field soon after each change; offer once it settles.
                 if (learnWatch != null && event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+                    main.removeCallbacks(offerLearn)
                     main.removeCallbacks(checkCorrection)
-                    main.postDelayed(checkCorrection, LEARN_SETTLE_MS)
+                    main.postDelayed(checkCorrection, LEARN_READ_MS)
                 }
             }
         }
@@ -812,11 +813,21 @@ class DictationService : AccessibilityService() {
         data class Learn(val word: String) : Offer
     }
 
-    /** A dictation just typed, watched for a corrected word until [until]. */
-    private class LearnWatch(val session: Int, val typed: String, val until: Long)
+    /**
+     * A dictation just typed, watched for a corrected word until [until].
+     * [candidate]: the corrected word the field last showed (main thread).
+     */
+    private class LearnWatch(val session: Int, val typed: String, val until: Long) {
+        var candidate: String? = null
+    }
     private var learnWatch: LearnWatch? = null
 
-    /** Reads the field around the cursor (in memory, never logged) and offers a corrected word. */
+    /**
+     * Reads the field around the cursor (in memory, never logged) after each
+     * change. A corrected word is offered once typing settles, or at once when
+     * the dictation leaves the field: in a chat you fix a word and tap send, and
+     * the box is empty before any settle delay is over.
+     */
     private val checkCorrection = Runnable {
         val w = learnWatch ?: return@Runnable
         if (session != w.session || SystemClock.elapsedRealtime() > w.until) {
@@ -830,18 +841,34 @@ class DictationService : AccessibilityService() {
                 method.currentInputConnection?.getSurroundingText(LEARN_CONTEXT, LEARN_CONTEXT, 0)?.text?.toString()
             }.getOrNull() ?: return@execute Trace.event("learn_check", "why" to "no_text")
             val check = Corrections.check(w.typed, around, dictionary.load().words.toSet())
-            // Why nothing was offered, to find where auto-learn stops. Never the text.
-            if (check.word == null) Trace.event("learn_check", "why" to check.why, "typedChars" to w.typed.length, "aroundChars" to around.length)
-            val word = check.word ?: return@execute
             main.post {
-                if (learnWatch !== w || session != w.session || state != MicButton.State.IDLE) {
-                    return@post Trace.event("learn_check", "why" to "stale")
+                if (learnWatch !== w || session != w.session) return@post
+                // Why nothing is on offer yet, to find where auto-learn stops. Never the text.
+                if (check.word == null) {
+                    Trace.event(
+                        "learn_check", "why" to check.why, "typedChars" to w.typed.length,
+                        "aroundChars" to around.length, "candidate" to (w.candidate != null),
+                    )
                 }
-                learnWatch = null
-                Trace.event("learn_offered", "chars" to word.length)
-                setOffer(Offer.Learn(word), LEARN_OFFER_MS)
+                when {
+                    check.word != null -> {
+                        w.candidate = check.word
+                        main.postDelayed(offerLearn, LEARN_SETTLE_MS)
+                    }
+                    check.dictationGone && w.candidate != null -> offerLearn.run()
+                    else -> w.candidate = null
+                }
             }
         }
+    }
+
+    private val offerLearn = Runnable {
+        val w = learnWatch ?: return@Runnable
+        val word = w.candidate ?: return@Runnable
+        if (session != w.session || state != MicButton.State.IDLE) return@Runnable Trace.event("learn_check", "why" to "stale")
+        learnWatch = null
+        Trace.event("learn_offered", "chars" to word.length)
+        setOffer(Offer.Learn(word), LEARN_OFFER_MS)
     }
 
     private var offer: Offer? = null
@@ -1053,7 +1080,8 @@ class DictationService : AccessibilityService() {
         private const val RETRY_MS = 2 * 60_000L
         /** Auto-learn: how long after a dictation a corrected word is looked for, and offered. */
         private const val LEARN_WATCH_MS = 30_000L
-        private const val LEARN_SETTLE_MS = 1_500L
+        private const val LEARN_SETTLE_MS = 1_200L
+        private const val LEARN_READ_MS = 300L
         private const val LEARN_OFFER_MS = 15_000L
         private const val LEARN_CONTEXT = 1_000
 

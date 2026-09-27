@@ -20,7 +20,10 @@ object Corrections {
     fun find(typed: String, now: CharSequence, known: Set<String>): String? = check(typed, now, known).word
 
     /** [find]'s answer, and why there's no word when there isn't one; [why] is for traces. */
-    class Check(val word: String?, val why: String)
+    class Check(val word: String?, val why: String) {
+        /** The field no longer holds the dictation: sent, cleared or mostly deleted. */
+        val dictationGone: Boolean get() = why == "fewer_words"
+    }
 
     fun check(typed: String, now: CharSequence, known: Set<String>): Check {
         val t = words(typed)
