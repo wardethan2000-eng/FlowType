@@ -45,6 +45,7 @@ import com.ethanward.flowtype.cleanup.Cleaner
 import com.ethanward.flowtype.cleanup.CleanupConfig
 import com.ethanward.flowtype.cleanup.NoteTitler
 import com.ethanward.flowtype.cleanup.UsageStore
+import com.ethanward.flowtype.dictionary.Corrections
 import com.ethanward.flowtype.dictionary.DictionaryPass
 import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.ethanward.flowtype.history.HistoryEntry
@@ -351,6 +352,11 @@ class DictationService : AccessibilityService() {
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
                 main.removeCallbacks(refreshKeyboard)
                 main.postDelayed(refreshKeyboard, 50)
+                // Auto-learn: look for a corrected word once the typing settles.
+                if (learnWatch != null && event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+                    main.removeCallbacks(checkCorrection)
+                    main.postDelayed(checkCorrection, LEARN_SETTLE_MS)
+                }
             }
         }
     }
@@ -462,9 +468,10 @@ class DictationService : AccessibilityService() {
         }
         b.setState(state)
         b.setChip(
-            when (offer) {
+            when (val o = offer) {
                 is Offer.Undo -> "Undo cleanup"
                 is Offer.Retry -> "Type it here"
+                is Offer.Learn -> "Add \"${o.word}\""
                 null -> null
             },
         )
@@ -622,6 +629,7 @@ class DictationService : AccessibilityService() {
         // Transcribe while you talk when the pause detector is there (PLAN §4.3).
         val live = prefs.liveChunking && store.isVadInstalled()
         acceptErrors = 0
+        learnWatch = null
         recordingStartedAt = SystemClock.elapsedRealtime()
         asr.execute {
             chunker?.release()
@@ -798,6 +806,34 @@ class DictationService : AccessibilityService() {
         data class Undo(val session: Int, val typed: String, val original: String) : Offer
         /** Type text that couldn't be typed, into whatever field is open now. */
         data class Retry(val text: String) : Offer
+        /** Add a word you corrected in a dictation to the dictionary (PLAN §4.4 auto-learn). */
+        data class Learn(val word: String) : Offer
+    }
+
+    /** A dictation just typed, watched for a corrected word until [until]. */
+    private class LearnWatch(val session: Int, val typed: String, val until: Long)
+    private var learnWatch: LearnWatch? = null
+
+    /** Reads the field around the cursor (in memory, never logged) and offers a corrected word. */
+    private val checkCorrection = Runnable {
+        val w = learnWatch ?: return@Runnable
+        if (session != w.session || SystemClock.elapsedRealtime() > w.until) {
+            learnWatch = null
+            return@Runnable
+        }
+        val method = inputMethod ?: return@Runnable
+        io.execute {
+            val around = runCatching {
+                method.currentInputConnection?.getSurroundingText(LEARN_CONTEXT, LEARN_CONTEXT, 0)?.text?.toString()
+            }.getOrNull() ?: return@execute
+            val word = Corrections.find(w.typed, around, dictionary.load().words.toSet()) ?: return@execute
+            main.post {
+                if (learnWatch !== w || session != w.session || state != MicButton.State.IDLE) return@post
+                learnWatch = null
+                Trace.event("learn_offered", "chars" to word.length)
+                setOffer(Offer.Learn(word), LEARN_OFFER_MS)
+            }
+        }
     }
 
     private var offer: Offer? = null
@@ -814,6 +850,8 @@ class DictationService : AccessibilityService() {
         when (val o = offer) {
             is Offer.Undo -> {
                 setOffer(null)
+                // Undo puts the phone's words back: not a correction to learn from.
+                learnWatch = null
                 if (session != o.session) return toast("That field has closed")
                 val method = inputMethod ?: return
                 io.execute {
@@ -826,6 +864,12 @@ class DictationService : AccessibilityService() {
                 setOffer(null)
                 setState(MicButton.State.BUSY)
                 insert(o.text, "retry", session, field, o.text, "retry", SystemClock.elapsedRealtime())
+            }
+            is Offer.Learn -> {
+                setOffer(null)
+                io.execute { dictionary.save(dictionary.load().withWord(o.word)) }
+                Trace.event("learn_accepted", "chars" to o.word.length)
+                toast("Added \"${o.word}\" to your dictionary")
             }
             null -> {}
         }
@@ -900,6 +944,9 @@ class DictationService : AccessibilityService() {
                     else -> {}
                 }
                 setState(MicButton.State.IDLE)
+                if (source == "dictation" && result.typed != null) {
+                    learnWatch = LearnWatch(startedSession, result.typed, SystemClock.elapsedRealtime() + LEARN_WATCH_MS)
+                }
                 when {
                     original != null && result.typed != null ->
                         setOffer(Offer.Undo(startedSession, result.typed, original), UNDO_MS)
@@ -996,6 +1043,11 @@ class DictationService : AccessibilityService() {
         private const val CONTEXT_CHARS = 80
         private const val UNDO_MS = 6_000L
         private const val RETRY_MS = 2 * 60_000L
+        /** Auto-learn: how long after a dictation a corrected word is looked for, and offered. */
+        private const val LEARN_WATCH_MS = 30_000L
+        private const val LEARN_SETTLE_MS = 1_500L
+        private const val LEARN_OFFER_MS = 8_000L
+        private const val LEARN_CONTEXT = 1_000
 
         /** Set while the system has the service bound; the main screen's health line reads it. */
         @Volatile

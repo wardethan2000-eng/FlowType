@@ -3,6 +3,7 @@ package com.ethanward.flowtype.overlay
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -73,6 +74,7 @@ class MicButton(context: Context) : FrameLayout(context) {
         chip.textSize = 14f
         chip.gravity = Gravity.CENTER
         chip.maxLines = 1
+        chip.ellipsize = TextUtils.TruncateAt.END
         chip.background = GradientDrawable().apply {
             cornerRadius = dp(CHIP_HEIGHT_DP / 2).toFloat()
             setColor(context.getColor(R.color.panel_background))
