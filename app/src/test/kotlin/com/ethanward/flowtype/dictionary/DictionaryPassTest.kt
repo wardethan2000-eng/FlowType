@@ -91,4 +91,21 @@ class DictionaryPassTest {
         assertEquals(listOf("i", "Phone"), DictionaryPass.camelParts("iPhone"))
         assertEquals(listOf("New York"), DictionaryPass.camelParts("New York"))
     }
+
+    @Test
+    fun lolIsBuiltIn() {
+        val empty = DictionaryPass(Dictionary())
+        assertEquals("lol that's hilarious", empty.apply("hello well that's hilarious").text)
+        assertEquals("Lol, okay.", empty.apply("Hello well, okay.").text)
+        assertEquals("that's great LOL", empty.apply("that's great L O L").text)
+        assertEquals("that's great LOL", empty.apply("that's great L-O-L").text)
+        assertEquals("lol and LOL", empty.apply("hello well and L O L").text)
+        assertEquals("hello, well then", empty.apply("hello, well then").text)
+    }
+
+    @Test
+    fun theUsersOwnReplacementBeatsABuiltIn() {
+        val own = DictionaryPass(Dictionary().withReplacement(Replacement("hello well", "LOL")))
+        assertEquals("LOL that's funny", own.apply("hello well that's funny").text)
+    }
 }

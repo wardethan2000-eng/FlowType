@@ -4,9 +4,10 @@ package com.ethanward.flowtype.dictionary
  * Applies the dictionary to recognized text, offline and deterministically
  * (PLAN §4.4 passes 1 and 2; with no cleanup yet they run back to back):
  *
- * 1. Replacements: whole-word, any case, and the words of a phrase may be
- *    split by spaces or hyphens ("pet g", "Pet-G" → "PETG"). Longest phrase
- *    first, in one pass, so a replacement's output is never replaced again.
+ * 1. Replacements, the user's and [BuiltIns]': whole-word, any case, and the
+ *    words of a phrase may be split by spaces or hyphens ("pet g", "Pet-G" →
+ *    "PETG"). Longest phrase first, in one pass, so a replacement's output is
+ *    never replaced again.
  * 2. Exact spellings: every Word, and every replacement output that has a
  *    capital in it, is written exactly as entered ("Decalforge" →
  *    "DecalForge", "petg" → "PETG"). A Word written in CamelCase also
@@ -29,7 +30,8 @@ class DictionaryPass(dictionary: Dictionary, private val soundsLike: Boolean = f
     private val snippets = dictionary.snippets.sortedByDescending { it.trigger.length }
     private val snippetRegex = alternation(snippets.map { phrasePattern(it.trigger) })
 
-    private val replacements = dictionary.replacements.sortedByDescending { it.from.length }
+    private val replacements = (dictionary.replacements + BuiltIns.notIn(dictionary.replacements))
+        .sortedByDescending { it.from.length }
     private val replaceRegex = alternation(replacements.map { phrasePattern(it.from) })
 
     private val spellings: List<String> =
