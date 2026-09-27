@@ -88,7 +88,7 @@ class HistoryActivity : AppCompatActivity() {
         val time = DateUtils.getRelativeTimeSpanString(e.at, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
         val how = when (e.cleanup) {
             "cleaned" -> "cleaned up"
-            "off", "NO_KEY", "SHORT" -> null
+            "off", "NO_KEY", "SHORT", "CLEAN" -> null
             "DEADLINE" -> "cleanup too slow"
             "OFFLINE" -> "offline"
             else -> "not cleaned"

@@ -38,6 +38,7 @@ import com.ethanward.flowtype.audio.AudioCapture
 import com.ethanward.flowtype.audio.OtherAudio
 import com.ethanward.flowtype.audio.SignalStats
 import com.ethanward.flowtype.audio.Wav
+import com.ethanward.flowtype.cleanup.AlreadyClean
 import com.ethanward.flowtype.cleanup.ApiKeyStore
 import com.ethanward.flowtype.cleanup.AppStyle
 import com.ethanward.flowtype.cleanup.Cleaner
@@ -270,7 +271,7 @@ class DictationService : AccessibilityService() {
         noteCapture = cap
         overlay.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         toast("Taking a note. Press volume up or tap ✓ when you're done.")
-        preloadModel()
+        preloadModel(warm = true)
         Trace.event("note_started")
         return true
     }
@@ -649,7 +650,7 @@ class DictationService : AccessibilityService() {
         dictationField = field
         button?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         setState(MicButton.State.RECORDING)
-        preloadModel()
+        preloadModel(warm = true)
         if (cleanupStyle(field) != null) net.execute { cleaner.prewarm() }
         return true
     }
@@ -769,7 +770,11 @@ class DictationService : AccessibilityService() {
                     prefs.keyProblem = result.reason.name
                     if (first) main.post { toast(keyProblemMessage(result.reason)) }
                 }
-                return local to result.reason.name
+                val typed = when (result.reason) {
+                    Cleaner.Reason.SHORT, Cleaner.Reason.CLEAN -> AlreadyClean.finish(local, style)
+                    else -> local
+                }
+                return typed to result.reason.name
             }
         }
     }
@@ -905,11 +910,24 @@ class DictationService : AccessibilityService() {
         }
     }
 
-    private fun preloadModel() {
+    private fun preloadModel(warm: Boolean = false) {
         val model = AsrModels.byId(prefs.modelId) ?: AsrModels.DEFAULT
         if (!store.isInstalled(model)) return
         main.removeCallbacks(releaseIdleModel)
-        asr.execute { runCatching { loadModel() } }
+        asr.execute {
+            runCatching {
+                val (t, loadMs) = loadModel()
+                // Android swaps an idle model's memory out, and the service gets no
+                // CPU boost, so the first decode after a pause ran 2–5× slower than
+                // the bench. A throwaway decode of silence while you talk pages it
+                // back in and ramps the CPU before ✓.
+                if (warm && loadMs == 0L) {
+                    val started = SystemClock.elapsedRealtime()
+                    t.decode(FloatArray(WARM_UP_SAMPLES))
+                    Trace.event("model_warmed", "ms" to SystemClock.elapsedRealtime() - started)
+                }
+            }
+        }
     }
 
     /** asr thread. Returns the model and how long this call spent loading it. */
@@ -968,6 +986,7 @@ class DictationService : AccessibilityService() {
         private const val HOLD_TO_TALK_MS = 350L
         private const val CANCEL_SLIDE_DP = 100
         private const val MIN_NOTE_SAMPLES = 16_000 // 1 s
+        private const val WARM_UP_SAMPLES = 8_000 // 0.5 s
         /** A text box whose bottom is this close to the keyboard counts as sitting on it. */
         private const val NEAR_KEYBOARD_DP = 120
         /** Taller than this, a box is a page (notes, email body), not a compose bar. */

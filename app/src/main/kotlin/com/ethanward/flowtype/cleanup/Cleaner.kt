@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
 class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = null) {
 
     enum class Reason(val keyProblem: Boolean = false) {
-        NO_KEY, SHORT, OFFLINE, DEADLINE,
+        NO_KEY, SHORT, CLEAN, OFFLINE, DEADLINE,
         KEY_REJECTED(true), NO_CREDIT(true), RATE_LIMITED, MODEL_UNAVAILABLE(true), HTTP_ERROR,
         TOO_LONG, TOO_SHORT, ASSISTANT, EMPTY, ERROR,
     }
@@ -64,6 +64,8 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
         val key = keys.load() ?: return Result.Fallback(Reason.NO_KEY)
         // "sounds good", "on my way": already right, and instant without the network.
         if (Guards.contentWords(input).size <= SHORT_WORDS) return Result.Fallback(Reason.SHORT)
+        // Short and plain: the phone's text is already the answer, a second sooner.
+        if (AlreadyClean.check(input, style)) return Result.Fallback(Reason.CLEAN)
         return request(key, input, style, dictionary, config, deadlineMs, beforeCursor)
     }
 
@@ -80,7 +82,8 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
         deadlineMs: Long,
         beforeCursor: String? = null,
     ): Result {
-        val body = CleanupRequest.body(config, input, dictionary, style, beforeCursor?.takeLast(80)?.ifBlank { null })
+        val retention = if (retentionRejected) null else CleanupRequest.CACHE_RETENTION
+        val body = CleanupRequest.body(config, input, dictionary, style, beforeCursor?.takeLast(80)?.ifBlank { null }, retention)
         val request = Request.Builder()
             .url(CleanupRequest.URL)
             .header("Authorization", "Bearer $key")
@@ -97,7 +100,14 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
         try {
             call.execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    val reason = errorReason(resp.code, resp.body?.string().orEmpty())
+                    val error = resp.body?.string().orEmpty()
+                    if (retention != null && rejectsRetention(resp.code, error)) {
+                        // A model without the day-long cache: stop asking, and retry at once.
+                        retentionRejected = true
+                        Trace.warn("cache_retention_rejected", "model" to config.model)
+                        return request(key, input, style, dictionary, config, maxOf(1, deadlineMs - ms()), beforeCursor)
+                    }
+                    val reason = errorReason(resp.code, error)
                     return Result.Fallback(reason, ms(), resp.code)
                 }
                 billed = true
@@ -163,6 +173,9 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
         runCatching { store.record(config, u) }
     }
 
+    /** OpenAI refused prompt_cache_retention once; this process stops sending it. */
+    @Volatile private var retentionRejected = false
+
     /** Cached tokens on the last complete answer: the best guess for one cut short. */
     @Volatile private var lastCached = 0
 
@@ -184,6 +197,14 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
                 http == 403 -> Reason.MODEL_UNAVAILABLE
                 else -> Reason.HTTP_ERROR
             }
+        }
+
+        /** A 400 that names the cache retention parameter, i.e. this model can't keep it. */
+        fun rejectsRetention(http: Int, body: String): Boolean {
+            if (http != 400) return false
+            val error = runCatching { JSONObject(body).optJSONObject("error") }.getOrNull() ?: return false
+            return error.optString("param") == "prompt_cache_retention" ||
+                error.optString("message").contains("prompt_cache_retention")
         }
 
         /** Trims the answer, and drops quotes it wrapped around the whole thing. */

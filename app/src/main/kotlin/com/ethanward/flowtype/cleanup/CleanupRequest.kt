@@ -30,6 +30,12 @@ data class CleanupConfig(
 object CleanupRequest {
     const val URL = "https://api.openai.com/v1/responses"
     const val CACHE_KEY = "flowtype-cleanup-v${CleanupPrompt.VERSION}"
+    /**
+     * Keep the cached prefix for a day, not the default few minutes: dictations
+     * are often further apart than that, and a cold prefix cost ~0.4–1 s of
+     * first token on the phone.
+     */
+    const val CACHE_RETENTION = "24h"
 
     fun body(
         config: CleanupConfig,
@@ -37,6 +43,7 @@ object CleanupRequest {
         dictionary: List<String>,
         style: String,
         beforeCursor: String? = null,
+        cacheRetention: String? = CACHE_RETENTION,
     ): JSONObject = JSONObject().apply {
         put("model", config.model)
         put("instructions", CleanupPrompt.instructions(dictionary))
@@ -55,6 +62,7 @@ object CleanupRequest {
         put("stream", true)
         put("max_output_tokens", CleanupPrompt.maxOutputTokens(transcript))
         put("prompt_cache_key", CACHE_KEY)
+        cacheRetention?.let { put("prompt_cache_retention", it) }
         config.serviceTier?.let { put("service_tier", it) }
     }
 }

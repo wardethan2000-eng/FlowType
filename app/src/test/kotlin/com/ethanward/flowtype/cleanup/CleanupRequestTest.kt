@@ -34,4 +34,10 @@ class CleanupRequestTest {
         assertFalse(b.has("reasoning"))
         assertFalse(b.getBoolean("store"))
     }
+
+    @Test
+    fun theCacheIsKeptForADayUnlessTheModelRefused() {
+        assertEquals("24h", CleanupRequest.body(CleanupConfig.LUNA_FAST, "x", emptyList(), "email").getString("prompt_cache_retention"))
+        assertFalse(CleanupRequest.body(CleanupConfig.LUNA_FAST, "x", emptyList(), "email", cacheRetention = null).has("prompt_cache_retention"))
+    }
 }
