@@ -18,8 +18,8 @@ object Guards {
     )
 
     fun words(text: String): List<String> =
-        text.lowercase().split(Regex("[^\\p{L}\\p{N}'$%@.-]+"))
-            .map { it.trim('.', '-', '\'') }
+        text.lowercase().split(Regex("[^\\p{L}\\p{N}'$%@.:-]+"))
+            .map { it.trim('.', '-', '\'', ':') }
             .filter { it.isNotEmpty() }
 
     /** Words that carry meaning: fillers ("um", "uh") and "you know" dropped. */

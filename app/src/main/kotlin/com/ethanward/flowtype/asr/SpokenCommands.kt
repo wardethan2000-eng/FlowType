@@ -30,8 +30,16 @@ object SpokenCommands {
         "(?:(?<=^)|(?<=[.,!?:;])\\s*|\\s+)$W(?i:new (line|paragraph))$E(?:[.,:;]+\\s*|\\s*$|\\s+(?=\\p{Lu}))",
     )
 
+    private val hours = listOf("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve")
+
+    /** "ten o'clock" or "10 o'clock": a time is written 10:00 (Ethan, 2026-09-27). */
+    private val oClock = Regex("$W(${hours.joinToString("|")}|1[0-2]|[1-9]) o[’']? ?clock$E", RegexOption.IGNORE_CASE)
+
     fun apply(text: String): String {
-        var t = text
+        var t = oClock.replace(text) { m ->
+            val h = m.groupValues[1]
+            "${h.toIntOrNull() ?: (hours.indexOf(h.lowercase()) + 1)}:00"
+        }
         for ((regex, mark) in marks) t = regex.replace(t, mark)
         t = breaks.replace(t) { m -> if (m.groupValues[1].equals("paragraph", true)) "\n\n" else "\n" }
         // A new sentence after ? ! or a line break starts with a capital.

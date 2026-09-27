@@ -132,6 +132,12 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
                 val output = tidy(stream.text.toString(), input)
                 val verdict = Guards.check(input, output)
                 if (verdict != Guards.Verdict.OK) {
+                    // Counts only, to tune the guards: which answers they throw away, and by how much.
+                    Trace.event(
+                        "guard_rejected", "verdict" to verdict, "style" to style,
+                        "wordsIn" to Guards.contentWords(input).size, "wordsOut" to Guards.words(output).size,
+                        "rawWordsIn" to Guards.words(input).size,
+                    )
                     return Result.Fallback(
                         when (verdict) {
                             Guards.Verdict.TOO_LONG -> Reason.TOO_LONG

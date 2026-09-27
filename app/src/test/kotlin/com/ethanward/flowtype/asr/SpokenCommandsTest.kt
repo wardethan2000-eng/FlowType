@@ -24,4 +24,12 @@ class SpokenCommandsTest {
         assertEquals("The trial period ends Friday.", SpokenCommands.apply("The trial period ends Friday."))
         assertEquals("Commas are hard.", SpokenCommands.apply("Commas are hard."))
     }
+
+    @Test
+    fun oClockTimesAreWrittenInDigits() {
+        assertEquals("Meet at 10:00 tomorrow.", SpokenCommands.apply("Meet at ten o'clock tomorrow."))
+        assertEquals("See you at 4:00.", SpokenCommands.apply("See you at 4 o'clock."))
+        assertEquals("12:00 is 12:00.", SpokenCommands.apply("Twelve o clock is 12 o’clock."))
+        assertEquals("Twenty o'clock stays.", SpokenCommands.apply("Twenty o'clock stays."))
+    }
 }

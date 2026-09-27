@@ -70,4 +70,9 @@ class GuardsTest {
         assertTrue(Guards.canJudgeStart("Sure, here is", finished = false))
         assertTrue(Guards.canJudgeStart("Ok", finished = true))
     }
+
+    @Test
+    fun aClockTimeIsOneWord() {
+        assertEquals(listOf("meet", "at", "10:00", "sarah"), Guards.words("Meet at 10:00. Sarah:"))
+    }
 }
