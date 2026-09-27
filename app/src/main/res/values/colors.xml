@@ -2,6 +2,7 @@
 <resources>
     <color name="primary">#3B5BDB</color>
     <color name="button_idle">#202124</color>
+    <color name="button_outline">#8CFFFFFF</color>
     <color name="button_recording">#E03131</color>
     <color name="button_busy">#495057</color>
     <color name="panel_background">#EB202124</color>

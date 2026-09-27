@@ -11,10 +11,12 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.core.graphics.ColorUtils
 import com.ethanward.flowtype.R
 
 /**
- * The overlay. Idle: a dark mic circle, see-through so it hides less of the app.
+ * The overlay. Idle: a dark mic circle with a light outline, its fill
+ * see-through so it hides less of the app.
  * Listening: a panel with ✕ (throw it away), a live waveform, and ✓ (type it).
  * Busy: the circle with a spinner while the phone transcribes.
  */
@@ -44,6 +46,7 @@ class MicButton(context: Context) : FrameLayout(context) {
 
     init {
         val size = dp(SIZE_DP)
+        circle.setStroke(dp(2), context.getColor(R.color.button_outline))
         face.background = circle
         face.elevation = dp(6).toFloat()
         face.contentDescription = "Dictate"
@@ -118,7 +121,6 @@ class MicButton(context: Context) : FrameLayout(context) {
         panel.visibility = if (recording) VISIBLE else GONE
         face.visibility = if (recording) GONE else VISIBLE
         if (recording) waveform.clear()
-        circle.setColor(context.getColor(if (state == State.BUSY) R.color.button_busy else R.color.button_idle))
         icon.visibility = if (state == State.BUSY) INVISIBLE else VISIBLE
         spinner.visibility = if (state == State.BUSY) VISIBLE else GONE
         face.contentDescription = if (state == State.BUSY) "Transcribing" else "Dictate"
@@ -131,8 +133,15 @@ class MicButton(context: Context) : FrameLayout(context) {
         updateAlpha()
     }
 
+    /**
+     * Idle, only the circle's fill is see-through: the mic and the outline stay
+     * bright so the button is easy to find on any background.
+     */
     private fun updateAlpha() {
-        face.alpha = if (state == State.IDLE && !dragging) IDLE_ALPHA else 1f
+        val faded = state == State.IDLE && !dragging
+        val fill = context.getColor(if (state == State.BUSY) R.color.button_busy else R.color.button_idle)
+        circle.setColor(if (faded) ColorUtils.setAlphaComponent(fill, (IDLE_ALPHA * 255).toInt()) else fill)
+        icon.alpha = if (faded) ICON_IDLE_ALPHA else 1f
     }
 
     /** Loudness of the last 30 ms (RMS, 0..1). */
@@ -152,6 +161,7 @@ class MicButton(context: Context) : FrameLayout(context) {
         /** The window while listening: the panel plus the same margins. */
         const val PANEL_WINDOW_DP = PANEL_WIDTH_DP + 16
         const val IDLE_ALPHA = 0.5f
+        const val ICON_IDLE_ALPHA = 0.8f
         const val CHIP_WIDTH_DP = 148
         const val CHIP_HEIGHT_DP = 40
         /** The window while a chip shows: chip, gap, button. */
