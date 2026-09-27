@@ -5,9 +5,14 @@ import java.io.File
 
 /**
  * Transcribes while you talk (PLAN §4.3 live chunking). Mic frames go through
- * Silero VAD; each time it closes a stretch of speech, that stretch is decoded
- * straight away, padded with 0.5 s before and 0.25 s after. At the end only
- * the unfinished tail is left to decode.
+ * Silero VAD; each time it closes a stretch of speech, the recording is cut at
+ * the quietest moment of the pause that closed it, and everything since the
+ * last cut is decoded straight away. At the end only the tail after the last
+ * cut is left to decode.
+ *
+ * The pieces cover the whole recording: the VAD only picks where to cut. It
+ * used to pick what to decode too, and speech too quiet for it (a phone held
+ * low, a trailing word) was never decoded at all.
  *
  * Use from one thread (the service's asr thread), in order: [accept] for each
  * frame, then [finish] once, then [release].
@@ -17,6 +22,10 @@ class LiveChunker(vadModel: File, private val decode: (FloatArray) -> String) {
     private var audio = FloatArray(Wav.RATE * 30)
     private var size = 0
     private var fed = 0
+    /** Where the next piece starts: the end of the last one. */
+    private var cut = 0
+    /** The speech in the tail, when the VAD found some: the join rules read pauses from it. */
+    private var tailSpeech: Span? = null
     /** Samples handed to [accept]; compared with what the mic captured, to catch lost frames. */
     val samplesIn: Int get() = size
     private val pieces = ArrayList<Piece>()
@@ -37,7 +46,7 @@ class LiveChunker(vadModel: File, private val decode: (FloatArray) -> String) {
         }
     }
 
-    /** Decodes what's left. With no speech found at all, decodes everything, just in case. */
+    /** Decodes what's left after the last cut: the whole recording if there was none. */
     fun finish(): Result {
         val started = System.nanoTime()
         if (size > fed) {
@@ -46,33 +55,49 @@ class LiveChunker(vadModel: File, private val decode: (FloatArray) -> String) {
             vad.acceptWaveform(last)
         }
         vad.flush()
-        drain()
-        var whole = false
-        if (pieces.isEmpty() && size > 0) {
-            pieces += Piece(Span(0, size), decode(audio.copyOf(size)))
-            whole = true
+        drain(atEnd = true)
+        val whole = pieces.isEmpty()
+        if (size - cut >= MIN_TAIL || (whole && size > 0)) {
+            pieces += Piece(tailSpeech ?: Span(cut, size), decode(audio.copyOfRange(cut, size)))
+            cut = size
         }
         return Result(pieces.toList(), (System.nanoTime() - started) / 1_000_000, whole)
     }
 
     fun release() = vad.release()
 
-    /** Decodes every segment the VAD has closed. True if there were any. */
-    private fun drain(): Boolean {
+    /**
+     * For every stretch of speech the VAD has closed, cuts in the pause after
+     * it and decodes from the last cut to this one. True if it decoded any.
+     * At the end, the flushed last stretch has no pause after it yet: it's
+     * left to the tail.
+     */
+    private fun drain(atEnd: Boolean = false): Boolean {
         var any = false
         while (!vad.empty()) {
             val seg = vad.front()
-            val span = Span(seg.start, minOf(size, seg.start + seg.samples.size))
+            val end = minOf(size, seg.start + seg.samples.size)
             vad.pop()
-            val padded = span.padded(PAD_BEFORE, PAD_AFTER, size)
-            pieces += Piece(span, decode(audio.copyOfRange(padded.start, padded.end)))
+            // A piece's span is its speech, not its cut range, so the join rules
+            // still see how long the pause between two pieces was.
+            val speech = Span(maxOf(cut, seg.start), end)
+            if (atEnd && size - end < MIN_TAIL) {
+                tailSpeech = speech
+                continue
+            }
+            // A 20 s forced cut has no pause after it: cut at its end.
+            val at = if (seg.samples.size >= FORCED_CUT) end else quietestPoint(audio, end, size)
+            if (at - cut < MIN_TAIL) continue
+            pieces += Piece(speech, decode(audio.copyOfRange(cut, at)))
+            cut = at
             any = true
         }
         return any
     }
 
     companion object {
-        const val PAD_BEFORE = Wav.RATE / 2
-        const val PAD_AFTER = Wav.RATE / 4
+        /** Under 0.1 s isn't worth a decode of its own. */
+        const val MIN_TAIL = Wav.RATE / 10
+        private const val FORCED_CUT = Wav.RATE * 19
     }
 }

@@ -70,6 +70,28 @@ class Segmenter(vadModel: File) {
     }
 }
 
+/**
+ * The middle of the quietest 20 ms window in [from, to): where to cut a
+ * recording inside a pause, so a soft word at its edge isn't split. [to] when
+ * the range is shorter than a window.
+ */
+fun quietestPoint(audio: FloatArray, from: Int, to: Int, window: Int = 320): Int {
+    if (to - from < window) return to
+    var best = from
+    var bestEnergy = Double.MAX_VALUE
+    var i = from
+    while (i + window <= to) {
+        var e = 0.0
+        for (j in i until i + window) e += audio[j] * audio[j]
+        if (e < bestEnergy) {
+            bestEnergy = e
+            best = i
+        }
+        i += window / 2
+    }
+    return best + window / 2
+}
+
 /** One decoded piece of a recording. */
 data class Piece(val span: Span, val text: String)
 

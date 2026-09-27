@@ -266,7 +266,7 @@ class BenchActivity : AppCompatActivity() {
                     s = SystemClock.elapsedRealtime()
                     val spans = segmenter.split(samples)
                     val chunked = joinPieces(spans.map { span ->
-                        val p = span.padded(LiveChunker.PAD_BEFORE, LiveChunker.PAD_AFTER, samples.size)
+                        val p = span.padded(Wav.RATE / 2, Wav.RATE / 4, samples.size)
                         Piece(span, t.decode(samples.copyOfRange(p.start, p.end)))
                     }, keepCase = keepCase)
                     val chunkMs = SystemClock.elapsedRealtime() - s
