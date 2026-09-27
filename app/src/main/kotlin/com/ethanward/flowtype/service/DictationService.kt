@@ -318,9 +318,10 @@ class DictationService : AccessibilityService() {
                 }
                 return@execute
             }
-            val save = { text: String, cleanup: String ->
+            val save = { marked: String, cleanup: String ->
+                val text = pass.expand(marked)
                 // Saved at once with its first words as the title; the AI title follows.
-                val note = notes.add(text, local, NoteTitler.fallback(text))
+                val note = notes.add(text, pass.expand(local), NoteTitler.fallback(text))
                 Trace.event("note_saved", "audioMs" to pcm.size / 16, "chars" to text.length, "cleanup" to cleanup)
                 main.post {
                     removeNoteOverlay()
@@ -722,7 +723,8 @@ class DictationService : AccessibilityService() {
             }
             val style = cleanupStyle(field)
             if (local.isBlank() || style == null) {
-                main.post { finish(local, local, if (style == null) "off" else "empty", startedSession, field, stoppedAt) }
+                val typed = pass.expand(local)
+                main.post { finish(typed, typed, if (style == null) "off" else "empty", startedSession, field, stoppedAt) }
                 return@execute
             }
             net.execute {
@@ -733,7 +735,7 @@ class DictationService : AccessibilityService() {
                     }
                 }.getOrNull()
                 val (text, outcome) = cleanup(local, style, pass, dict.words + dict.replacements.map { it.to }.filter { t -> t.any(Char::isUpperCase) }, before)
-                main.post { finish(local, text, outcome, startedSession, field, stoppedAt) }
+                main.post { finish(pass.expand(local), pass.expand(text), outcome, startedSession, field, stoppedAt) }
             }
         }
     }

@@ -1,12 +1,14 @@
 package com.ethanward.flowtype.cleanup
 
+import com.ethanward.flowtype.dictionary.SnippetTokens
+
 /**
  * Checks on the cleanup model's answer (PLAN §4.5): the fix for "it answered
  * my question instead of typing it". Any failure means the local text is typed
  * instead. Nothing is inserted until the whole answer has passed.
  */
 object Guards {
-    enum class Verdict { OK, TOO_LONG, TOO_SHORT, ASSISTANT, EMPTY }
+    enum class Verdict { OK, TOO_LONG, TOO_SHORT, ASSISTANT, EMPTY, SNIPPETS }
 
     private val FILLERS = setOf("um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "hmm", "mm", "mhm")
 
@@ -72,6 +74,8 @@ object Guards {
 
     fun check(input: String, output: String): Verdict = when {
         soundsLikeAssistant(input, output) -> Verdict.ASSISTANT
+        // A snippet token dropped or repeated would lose or double the snippet.
+        !SnippetTokens.same(input, output) -> Verdict.SNIPPETS
         else -> length(input, output)
     }
 

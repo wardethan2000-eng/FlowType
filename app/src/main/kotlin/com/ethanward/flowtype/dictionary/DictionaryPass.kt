@@ -15,12 +15,19 @@ package com.ethanward.flowtype.dictionary
  *
  * 3. With [soundsLike], Words heard as ordinary words ("bamboo" → "Bambu"),
  *    by [SoundsLike]'s sound key and spelling closeness.
+ *
+ * Before all of them, a snippet's trigger becomes a token (⟦S1⟧) that nothing
+ * after, cleanup included, may change; [expand] puts the snippet's text in at
+ * the very end.
  */
 class DictionaryPass(dictionary: Dictionary, private val soundsLike: Boolean = false) {
 
     data class Result(val text: String, val replaced: Int, val respelled: Int, val soundAlike: Int = 0)
 
     private val words = dictionary.words
+
+    private val snippets = dictionary.snippets.sortedByDescending { it.trigger.length }
+    private val snippetRegex = alternation(snippets.map { phrasePattern(it.trigger) })
 
     private val replacements = dictionary.replacements.sortedByDescending { it.from.length }
     private val replaceRegex = alternation(replacements.map { phrasePattern(it.from) })
@@ -36,6 +43,9 @@ class DictionaryPass(dictionary: Dictionary, private val soundsLike: Boolean = f
         var replaced = 0
         var respelled = 0
         var out = text
+        snippetRegex?.let { regex ->
+            out = regex.replace(out) { m -> SnippetTokens.token(groupIndex(m)) }
+        }
         replaceRegex?.let { regex ->
             out = regex.replace(out) { m ->
                 val i = groupIndex(m)
@@ -58,6 +68,9 @@ class DictionaryPass(dictionary: Dictionary, private val soundsLike: Boolean = f
         }
         return Result(out, replaced, respelled, soundAlike)
     }
+
+    /** Each snippet token becomes its snippet's text: the last step before typing. */
+    fun expand(text: String): String = SnippetTokens.expand(text) { snippets.getOrNull(it)?.text }
 
     companion object {
         private const val BEFORE = "(?<![\\p{L}\\p{N}])"

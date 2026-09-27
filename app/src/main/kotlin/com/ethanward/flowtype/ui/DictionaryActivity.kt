@@ -15,15 +15,16 @@ import com.ethanward.flowtype.dictionary.Dictionary
 import com.ethanward.flowtype.dictionary.DictionaryPass
 import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.ethanward.flowtype.dictionary.Replacement
+import com.ethanward.flowtype.dictionary.Snippet
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.ethanward.flowtype.Prefs
 import org.json.JSONObject
 
 /**
- * The dictionary (PLAN §4.4): Words (exact spellings) and Replacements
- * (what you say → what gets typed), a box to try them out, and import/export
- * as a JSON file.
+ * The dictionary (PLAN §4.4): Words (exact spellings), Replacements
+ * (what you say → what gets typed) and Snippets (a phrase → saved text), a box
+ * to try them out, and import/export as a JSON file.
  */
 class DictionaryActivity : AppCompatActivity() {
     private lateinit var store: DictionaryStore
@@ -31,6 +32,7 @@ class DictionaryActivity : AppCompatActivity() {
     private var dict = Dictionary()
     private lateinit var words: LinearLayout
     private lateinit var replacements: LinearLayout
+    private lateinit var snippets: LinearLayout
     private lateinit var tryIn: EditText
     private lateinit var tryOut: TextView
 
@@ -48,7 +50,7 @@ class DictionaryActivity : AppCompatActivity() {
             Dictionary.fromJson(JSONObject(text))
         }.onSuccess { incoming ->
             save(dict.merge(incoming))
-            toast("Added ${incoming.words.size} words and ${incoming.replacements.size} replacements")
+            toast("Added ${incoming.words.size} words, ${incoming.replacements.size} replacements and ${incoming.snippets.size} snippets")
         }.onFailure { toast("That isn't a Flowtype dictionary file") }
     }
 
@@ -80,6 +82,10 @@ class DictionaryActivity : AppCompatActivity() {
             section("Replacements")
             val repCard = card(padded = false) { }
             replacements = repCard.column
+
+            section("Snippets")
+            val snippetCard = card(padded = false) { }
+            snippets = snippetCard.column
 
             section("Try it")
             card {
@@ -133,6 +139,17 @@ class DictionaryActivity : AppCompatActivity() {
             replacements.divider()
         }
         replacements.addAction("Add a replacement") { editReplacement(null) }
+
+        snippets.removeAllViews()
+        if (dict.snippets.isEmpty()) {
+            snippets.hint("Say a phrase, get saved text: \"my address\" types your whole address, exactly as saved. " +
+                "AI cleanup never changes a snippet.")
+        }
+        for (sn in dict.snippets) {
+            snippets.navRow(sn.trigger, sn.text.lineSequence().first().take(60)) { editSnippet(sn) }
+            snippets.divider()
+        }
+        snippets.addAction("Add a snippet") { editSnippet(null) }
         updateTry()
     }
 
@@ -153,8 +170,8 @@ class DictionaryActivity : AppCompatActivity() {
             tryOut.text = ""
             return
         }
-        val r = DictionaryPass(dict, prefs.soundsLike).apply(input)
-        tryOut.text = "→ ${r.text}"
+        val pass = DictionaryPass(dict, prefs.soundsLike)
+        tryOut.text = "→ ${pass.expand(pass.apply(input).text)}"
     }
 
     private fun editWord(existing: String?) {
@@ -213,6 +230,38 @@ class DictionaryActivity : AppCompatActivity() {
         }
         dialog.show()
         from.requestFocus()
+    }
+
+    private fun editSnippet(existing: Snippet?) {
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+        }
+        val trigger = form.field("When I say", existing?.trigger.orEmpty())
+        val text = form.field(
+            "Type this", existing?.text.orEmpty(),
+            type = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
+        ).apply { minLines = 3 }
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(if (existing == null) "Add a snippet" else "Edit snippet")
+            .setView(form)
+            .setPositiveButton("Save", null)
+            .setNegativeButton("Cancel", null)
+            .apply { if (existing != null) setNeutralButton("Delete") { _, _ -> save(dict.withoutSnippet(existing)) } }
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                val problem = Dictionary.problemWithSnippet(trigger.text.toString(), text.text.toString())
+                if (problem != null) {
+                    (if (problem.startsWith("Type what you'll say")) trigger else text).error = problem
+                    return@setOnClickListener
+                }
+                save(dict.withSnippet(Snippet(trigger.text.toString(), text.text.toString()), replacing = existing))
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
+        trigger.requestFocus()
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()

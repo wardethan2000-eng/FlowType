@@ -75,4 +75,10 @@ class GuardsTest {
     fun aClockTimeIsOneWord() {
         assertEquals(listOf("meet", "at", "10:00", "sarah"), Guards.words("Meet at 10:00. Sarah:"))
     }
+
+    @Test
+    fun aLostSnippetIsRejected() {
+        assertEquals(Verdict.SNIPPETS, Guards.check("send it to ⟦S1⟧ by friday", "Send it to my address by Friday."))
+        assertEquals(Verdict.OK, Guards.check("send it to ⟦S1⟧ by friday", "Send it to ⟦S1⟧ by Friday."))
+    }
 }

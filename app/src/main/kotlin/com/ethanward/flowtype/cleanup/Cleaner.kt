@@ -1,6 +1,7 @@
 package com.ethanward.flowtype.cleanup
 
 import com.ethanward.flowtype.Trace
+import com.ethanward.flowtype.dictionary.SnippetTokens
 import okhttp3.Call
 import okhttp3.ConnectionPool
 import okhttp3.MediaType.Companion.toMediaType
@@ -27,7 +28,7 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
     enum class Reason(val keyProblem: Boolean = false) {
         NO_KEY, SHORT, CLEAN, OFFLINE, DEADLINE,
         KEY_REJECTED(true), NO_CREDIT(true), RATE_LIMITED, MODEL_UNAVAILABLE(true), HTTP_ERROR,
-        TOO_LONG, TOO_SHORT, ASSISTANT, EMPTY, ERROR,
+        TOO_LONG, TOO_SHORT, ASSISTANT, SNIPPETS, EMPTY, ERROR,
     }
 
     sealed interface Result {
@@ -63,9 +64,11 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
     ): Result {
         val key = keys.load() ?: return Result.Fallback(Reason.NO_KEY)
         // "sounds good", "on my way": already right, and instant without the network.
-        if (Guards.contentWords(input).size <= SHORT_WORDS) return Result.Fallback(Reason.SHORT)
+        // Snippets are typed as saved: only the words around them count here.
+        val spoken = SnippetTokens.strip(input)
+        if (Guards.contentWords(spoken).size <= SHORT_WORDS) return Result.Fallback(Reason.SHORT)
         // Short and plain: the phone's text is already the answer, a second sooner.
-        if (AlreadyClean.check(input, style)) return Result.Fallback(Reason.CLEAN)
+        if (AlreadyClean.check(spoken, style)) return Result.Fallback(Reason.CLEAN)
         return request(key, input, style, dictionary, config, deadlineMs, beforeCursor)
     }
 
@@ -143,6 +146,7 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
                             Guards.Verdict.TOO_LONG -> Reason.TOO_LONG
                             Guards.Verdict.TOO_SHORT -> Reason.TOO_SHORT
                             Guards.Verdict.ASSISTANT -> Reason.ASSISTANT
+                            Guards.Verdict.SNIPPETS -> Reason.SNIPPETS
                             else -> Reason.EMPTY
                         },
                         ms(),
