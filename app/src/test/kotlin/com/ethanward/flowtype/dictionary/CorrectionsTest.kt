@@ -40,4 +40,9 @@ class CorrectionsTest {
         assertNull(Corrections.find(typed, "I printed it on the Bambu today.", setOf("Bambu")))
         assertNull(Corrections.find("the bamboo", "the Bambu", emptySet()))
     }
+
+    @Test
+    fun anOrdinaryLowercaseWordIsntOffered() {
+        assertNull(Corrections.find("I printed it on the Bambu today.", "I printed it on the bamboo today.", emptySet()))
+    }
 }

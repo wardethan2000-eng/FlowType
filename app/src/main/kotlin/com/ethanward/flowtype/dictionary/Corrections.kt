@@ -40,6 +40,9 @@ object Corrections {
             if (!ok || diff < 0) continue
             val word = c[start + diff].bare
             if (word.count { it.isLetter() } < 2 || known.any { it == word }) return null
+            // Words are for spellings the phone gets wrong: names, brands, PETG. An
+            // ordinary lowercase word ("Bambu" put back to "bamboo") needs no entry.
+            if (word.none { it.isUpperCase() || it.isDigit() }) return null
             return word
         }
         return null

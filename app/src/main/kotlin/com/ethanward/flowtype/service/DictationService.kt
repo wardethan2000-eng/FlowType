@@ -1046,7 +1046,7 @@ class DictationService : AccessibilityService() {
         /** Auto-learn: how long after a dictation a corrected word is looked for, and offered. */
         private const val LEARN_WATCH_MS = 30_000L
         private const val LEARN_SETTLE_MS = 1_500L
-        private const val LEARN_OFFER_MS = 8_000L
+        private const val LEARN_OFFER_MS = 15_000L
         private const val LEARN_CONTEXT = 1_000
 
         /** Set while the system has the service bound; the main screen's health line reads it. */
