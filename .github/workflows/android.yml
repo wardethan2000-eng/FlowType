@@ -4,6 +4,12 @@
 # The APK is signed with the build box's debug key, kept in the
 # DEBUG_KEYSTORE_B64 secret, so it installs over what's on the phone without
 # dropping the accessibility permission. Fetch it with scripts/ci-apk.sh.
+#
+# Every push to main that passes also becomes a GitHub release, v0.1.<build>,
+# with the APK attached; Obtainium on the phone installs it from there. The
+# build number is main's commit count, so each release is newer than the last.
+# The release carries only the signed APK: the signing key stays a secret, and
+# the OpenAI key is never in a build (it's entered in the app).
 name: android
 
 on:
@@ -16,12 +22,20 @@ concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write # releases
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the commit count is the build number
+
+      - name: Build number
+        run: echo "FLOWTYPE_BUILD=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v5
         with:
@@ -66,6 +80,20 @@ jobs:
           name: flowtype-debug-${{ github.sha }}
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
+
+      - name: Release for Obtainium
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_KEY: ${{ secrets.DEBUG_KEYSTORE_B64 != '' }}
+        run: |
+          # Without the box's key the APK wouldn't install over the phone's copy.
+          [ "$HAS_KEY" = "true" ] || { echo "::warning::no signing key: no release"; exit 0; }
+          version="0.1.$FLOWTYPE_BUILD"
+          cp app/build/outputs/apk/debug/app-debug.apk "flowtype-$version.apk"
+          git log -1 --format='%s%n%n%b' | grep -v -e '^Co-Authored-By:' -e '^Claude-Session:' > notes.md
+          gh release create "v$version" "flowtype-$version.apk" \
+            --target "$GITHUB_SHA" --title "Flowtype $version" --notes-file notes.md
 
       - uses: actions/upload-artifact@v4
         if: failure()

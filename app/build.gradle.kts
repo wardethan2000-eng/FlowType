@@ -3,6 +3,10 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// The build number is main's commit count, set by CI and scripts/remote-build.sh.
+// It must rise with every release, or Obtainium won't offer the update.
+val buildNumber = System.getenv("FLOWTYPE_BUILD")?.toIntOrNull() ?: 1
+
 android {
     namespace = "com.ethanward.flowtype"
     compileSdk = 35
@@ -11,8 +15,8 @@ android {
         applicationId = "com.ethanward.flowtype"
         minSdk = 33
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.0.1"
+        versionCode = buildNumber
+        versionName = "0.1.$buildNumber"
 
         ndk { abiFilters += "arm64-v8a" }
     }

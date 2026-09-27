@@ -39,6 +39,9 @@ NAME="$(basename "$ROOT")"
 REMOTE="work/$NAME"
 APK_REMOTE="app/build/outputs/apk/debug/app-debug.apk"
 APK_LOCAL="out/flowtype-debug.apk"
+# The same build number CI gives this commit (app/build.gradle.kts), so a box
+# build and the GitHub release of that commit carry one version.
+BUILD="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"
 
 usage() {
   sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
@@ -73,7 +76,7 @@ sync_up() {
 remote() {
   local cmd
   cmd=$(printf '%q ' "$@")
-  ssh -o BatchMode=yes "$HOST" "export JAVA_HOME=\$HOME/android/jdk ANDROID_HOME=\$HOME/android/sdk \
+  ssh -o BatchMode=yes "$HOST" "export JAVA_HOME=\$HOME/android/jdk ANDROID_HOME=\$HOME/android/sdk FLOWTYPE_BUILD=$BUILD \
     GRADLE_OPTS='-Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy=in-process' && \
     export PATH=\$JAVA_HOME/bin:\$ANDROID_HOME/platform-tools:/usr/local/bin:\$PATH && \
     cd $REMOTE && exec bash scripts/builder/queue-run $NAME $mode $cmd"
@@ -101,7 +104,8 @@ case "$mode" in
     # adb is light; it runs here, where the phone is (USB, or `adb pair` /
     # `adb connect` for wireless debugging).
     [ -f "$ROOT/$APK_LOCAL" ] || { echo "no $APK_LOCAL yet: run \`$0 apk\` first" >&2; exit 1; }
-    adb install -r "$ROOT/$APK_LOCAL"
+    # -d: a box build may sit below a newer release Obtainium installed.
+    adb install -r -d "$ROOT/$APK_LOCAL"
     ;;
   run)
     [ "${1:-}" = "--" ] && shift
