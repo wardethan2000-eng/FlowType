@@ -2,6 +2,7 @@ package com.ethanward.flowtype.asr
 
 import com.ethanward.flowtype.audio.Wav
 import java.io.File
+import kotlin.math.sqrt
 
 /**
  * Transcribes while you talk (PLAN §4.3 live chunking). Mic frames go through
@@ -33,7 +34,18 @@ class LiveChunker(vadModel: File, private val decode: (FloatArray) -> String) {
     var decodedWhileRecordingMs = 0L
         private set
 
-    data class Result(val pieces: List<Piece>, val tailMs: Long, val wholeFallback: Boolean)
+    /**
+     * [tailLoudness]: the last piece's speech RMS over the rest's, when there
+     * are two or more; to tell handling noise from a word said on purpose.
+     * [droppedFiller]: [dropTrailingFiller] threw the last piece away.
+     */
+    data class Result(
+        val pieces: List<Piece>,
+        val tailMs: Long,
+        val wholeFallback: Boolean,
+        val tailLoudness: Float?,
+        val droppedFiller: Boolean,
+    )
 
     fun accept(frame: ShortArray) {
         if (size + frame.size > audio.size) audio = audio.copyOf(maxOf(audio.size * 2, size + frame.size))
@@ -61,7 +73,23 @@ class LiveChunker(vadModel: File, private val decode: (FloatArray) -> String) {
             pieces += Piece(tailSpeech ?: Span(cut, size), decode(audio.copyOfRange(cut, size)))
             cut = size
         }
-        return Result(pieces.toList(), (System.nanoTime() - started) / 1_000_000, whole)
+        val kept = dropTrailingFiller(pieces, size)
+        return Result(kept, (System.nanoTime() - started) / 1_000_000, whole, tailLoudness(), kept.size < pieces.size)
+    }
+
+    private fun tailLoudness(): Float? {
+        if (pieces.size < 2) return null
+        fun rms(spans: List<Span>): Double {
+            var sumSq = 0.0
+            var n = 0
+            for (span in spans) for (i in span.start until minOf(span.end, size)) {
+                sumSq += audio[i] * audio[i]
+                n++
+            }
+            return if (n == 0) 0.0 else sqrt(sumSq / n)
+        }
+        val rest = rms(pieces.dropLast(1).map { it.span })
+        return if (rest > 0.0) (rms(listOf(pieces.last().span)) / rest).toFloat() else null
     }
 
     fun release() = vad.release()

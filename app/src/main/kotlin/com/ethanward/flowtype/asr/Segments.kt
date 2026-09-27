@@ -136,6 +136,37 @@ fun joinPieces(pieces: List<Piece>, keepCase: Set<String> = emptySet(), shortGap
     return out.toString()
 }
 
+/**
+ * Drops the last piece when it's only a filler word ("Mm-hmm.", "Yeah.") heard
+ * in a separate burst of sound that runs into the ✓ tap: the phone moving in
+ * the hand as you reach for it. Parakeet has no "no speech" answer, so it
+ * decodes that noise as its most common short word, and the VAD calls it
+ * speech too. A filler said on purpose and followed by any wait before ✓ stops
+ * short of [total] by more than [touch] samples and is kept. [minGap] keeps a
+ * piece that follows a 20 s forced cut, where there was no pause at all.
+ *
+ * [total] is the recording's length in samples.
+ */
+fun dropTrailingFiller(
+    pieces: List<Piece>,
+    total: Int,
+    touch: Int = 150 * 16,
+    minGap: Int = 100 * 16,
+): List<Piece> {
+    if (pieces.size < 2) return pieces
+    val last = pieces.last()
+    val before = pieces[pieces.size - 2]
+    if (last.span.end < total - touch || last.span.start - before.span.end < minGap) return pieces
+    val words = last.text.split(' ').map(::bare).filter { it.isNotEmpty() }
+    if (words.isEmpty() || !words.all { it in FILLERS }) return pieces
+    return pieces.dropLast(1)
+}
+
+/** What Parakeet makes of handling noise, as [bare] words. */
+private val FILLERS = setOf(
+    "yeah", "mm-hmm", "mhm", "mm", "mmm", "hmm", "hm", "uh-huh", "uh", "um", "ah", "oh",
+)
+
 /** Plain join, for comparing against the rules. */
 fun joinSegments(texts: List<String>): String =
     texts.map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" ")

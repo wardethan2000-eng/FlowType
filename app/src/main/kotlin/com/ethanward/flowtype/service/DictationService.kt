@@ -709,6 +709,8 @@ class DictationService : AccessibilityService() {
                         "pieces" to chunked.pieces.joinToString(",") { "${it.span.start / 16}-${it.span.end / 16}ms:${it.text.length}c" },
                         "capturedMs" to samples.size / 16, "fedMs" to live.samplesIn / 16,
                         "wallMs" to stoppedAt - recordingStartedAt, "acceptErrors" to acceptErrors,
+                        "tailLoudness" to chunked.tailLoudness?.let { "%.2f".format(it) },
+                        "droppedFiller" to chunked.droppedFiller,
                     )
                 }
                 val decodeMs = SystemClock.elapsedRealtime() - started
