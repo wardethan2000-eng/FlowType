@@ -10,3 +10,5 @@ out/
 # Ethan's own recordings and bench output: never committed (the repo is public).
 recordings/
 bench-results/
+# The plans: a separate private repo cloned here (see AGENTS.md).
+private/

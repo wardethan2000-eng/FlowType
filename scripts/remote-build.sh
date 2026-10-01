@@ -66,6 +66,7 @@ sync_up() {
     --exclude='app/libs/' \
     --exclude='local.properties' \
     --exclude='out/' \
+    --exclude='private/' \
     "$ROOT/" "$HOST:$REMOTE/"
 }
 

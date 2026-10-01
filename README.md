@@ -1,6 +1,6 @@
 # Flowtype
 
-Wispr Flow–style dictation for Android. A floating mic button sits above
+Dictation for Android that runs on your phone. A floating mic button sits above
 whatever keyboard you use: tap it, speak, tap again, and cleaned-up, punctuated
 text appears at your cursor in any app.
 
@@ -13,8 +13,8 @@ text appears at your cursor in any app.
 
 Built for the Samsung Galaxy S25 first. Status: **Phase 0**, the first slice
 of a new app: the button, on-phone transcription and insertion, plus developer
-screens that measure speed and insertion. See [docs/PLAN.md](docs/PLAN.md) for
-the whole plan and [PRIVACY.md](PRIVACY.md) for what leaves the phone.
+screens that measure speed and insertion. See [PRIVACY.md](PRIVACY.md) for
+what leaves the phone.
 
 ## Build
 

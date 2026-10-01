@@ -1,7 +1,12 @@
 # AGENTS.md — How to work in this repo
 
-Read this before writing code. The plan is [docs/PLAN.md](docs/PLAN.md): build
-what it says, in its phase order, and update it when a decision changes.
+Read this before writing code. The plan is private (2026-10-01): `PLAN.md`
+and `LAUNCH.md` in the private repo `wardethan2000-eng/FlowType-private`,
+cloned at `private/` here and ignored by this public repo. Clone it there if
+it's missing (`gh repo clone wardethan2000-eng/FlowType-private private`).
+Build what the plan says, in its order, update it when a decision changes,
+and commit and push it in `private/`. "PLAN §n" in comments means that file.
+Nothing about pricing, launch or competitors goes in this public repo.
 
 ## Layout
 
@@ -19,7 +24,7 @@ app/src/test/                                   JVM unit tests
 app/libs/sherpa-onnx.aar                        fetched on the box, never committed
 scripts/remote-build.sh                         every build, run on the build box
 scripts/builder/                                scripts that run ON the box
-docs/PLAN.md                                    the plan
+private/                                        the plan (private repo, ignored here)
 ```
 
 ## Heavy work runs on the build box, never on Ethan's laptop
