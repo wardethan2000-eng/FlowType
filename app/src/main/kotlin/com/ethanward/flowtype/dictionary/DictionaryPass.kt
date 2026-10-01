@@ -52,7 +52,8 @@ class DictionaryPass(dictionary: Dictionary, private val soundsLike: Boolean = f
             out = regex.replace(out) { m ->
                 val i = groupIndex(m)
                 replaced++
-                transferCase(m.value, replacements[i].to.trim())
+                val to = replacements[i].to.trim()
+                if (to in BuiltIns.alwaysLowercase) to else transferCase(m.value, to)
             }
         }
         var soundAlike = 0

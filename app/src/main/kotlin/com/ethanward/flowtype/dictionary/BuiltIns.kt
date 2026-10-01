@@ -11,10 +11,14 @@ object BuiltIns {
         Replacement("hello well", "lol"),
         // The same, run together (2026-10-01: one "lol" in four came out "Ellowell").
         Replacement("ellowell", "lol"),
-        // Spelled out letter by letter: typed as letters. Built-ins don't join the
-        // exact spellings, so this doesn't turn every "lol" into "LOL".
-        Replacement("l o l", "LOL"),
+        // Spelled out letter by letter, and "LOL"/"Lol" as heard: all typed as
+        // "lol", lowercase even starting a message (Ethan, 2026-10-01).
+        Replacement("l o l", "lol"),
+        Replacement("lol", "lol"),
     )
+
+    /** Outputs typed as written, never capitalized at the start of a sentence. */
+    val alwaysLowercase = setOf("lol")
 
     /** The built-ins [own] doesn't already cover, to go after them. */
     fun notIn(own: List<Replacement>): List<Replacement> =

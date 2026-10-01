@@ -96,12 +96,17 @@ class DictionaryPassTest {
     fun lolIsBuiltIn() {
         val empty = DictionaryPass(Dictionary())
         assertEquals("lol that's hilarious", empty.apply("hello well that's hilarious").text)
-        assertEquals("Lol, okay.", empty.apply("Hello well, okay.").text)
-        assertEquals("that's great LOL", empty.apply("that's great L O L").text)
-        assertEquals("that's great LOL", empty.apply("that's great L-O-L").text)
-        assertEquals("lol and LOL", empty.apply("hello well and L O L").text)
+        assertEquals("lol, okay.", empty.apply("Hello well, okay.").text)
+        assertEquals("that's great lol", empty.apply("that's great L O L").text)
+        assertEquals("that's great lol", empty.apply("that's great L-O-L").text)
+        assertEquals("lol and lol", empty.apply("hello well and L O L").text)
         assertEquals("hello, well then", empty.apply("hello, well then").text)
-        assertEquals("Lol", empty.apply("Ellowell").text)
+        assertEquals("lol", empty.apply("Ellowell").text)
+        // However it was heard, always lowercase (2026-10-01: "LOL", "Lol." in a row).
+        assertEquals("lol", empty.apply("LOL").text)
+        assertEquals("lol.", empty.apply("Lol.").text)
+        assertEquals("lol that's funny", empty.apply("LOL that's funny").text)
+        assertEquals("Gonna", DictionaryPass(Dictionary().withReplacement(Replacement("gonna", "gonna"))).apply("Gonna").text)
         assertEquals("that's funny lol.", empty.apply("that's funny ellowell.").text)
     }
 
