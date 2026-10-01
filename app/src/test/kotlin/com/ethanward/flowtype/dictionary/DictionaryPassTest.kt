@@ -101,6 +101,8 @@ class DictionaryPassTest {
         assertEquals("that's great LOL", empty.apply("that's great L-O-L").text)
         assertEquals("lol and LOL", empty.apply("hello well and L O L").text)
         assertEquals("hello, well then", empty.apply("hello, well then").text)
+        assertEquals("Lol", empty.apply("Ellowell").text)
+        assertEquals("that's funny lol.", empty.apply("that's funny ellowell.").text)
     }
 
     @Test
