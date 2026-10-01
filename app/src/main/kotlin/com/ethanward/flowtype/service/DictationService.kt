@@ -33,6 +33,7 @@ import com.ethanward.flowtype.asr.ModelStore
 import com.ethanward.flowtype.asr.Transcriber
 import com.ethanward.flowtype.audio.AudioCapture
 import com.ethanward.flowtype.audio.OtherAudio
+import com.ethanward.flowtype.audio.QuietGate
 import com.ethanward.flowtype.audio.SignalStats
 import com.ethanward.flowtype.audio.Wav
 import com.ethanward.flowtype.cleanup.AlreadyClean
@@ -447,8 +448,15 @@ class DictationService : AccessibilityService() {
             chunker?.release()
             chunker = if (live) runCatching { LiveChunker(store.vadFile()) { loadModel().first.decode(it) } }.getOrNull() else null
         }
-        // Pause a video or music first, so the mic hears you and not it.
-        if (prefs.pauseOtherAudio) otherAudio.pause()
+        // Pause a video or music first, so the mic hears you and not it. If one was
+        // playing, the mic stays blank until it has really gone quiet (QuietGate).
+        val playing = prefs.pauseOtherAudio && otherAudio.pause()
+        val route = if (playing) otherAudio.route() else null
+        val gate = route?.let {
+            QuietGate(SystemClock.uptimeMillis(), if (it.far) QuietGate.FAR_MARGIN_MS else QuietGate.NEAR_MARGIN_MS)
+        }
+        quietGate = gate
+        mixQuietMs = -1
         val cap = AudioCapture(
             onLevel = { level -> main.post { if (state == MicButton.State.RECORDING) button?.setLevel(level) } },
             onFrame = if (live) { frame ->
@@ -458,6 +466,16 @@ class DictationService : AccessibilityService() {
                     }
                 }
             } else null,
+            blank = gate?.let { g ->
+                { frame ->
+                    val wasOpen = g.isOpen
+                    val now = SystemClock.uptimeMillis()
+                    if (!wasOpen && mixQuietMs < 0 && !otherAudio.musicActive()) mixQuietMs = now - g.startMs
+                    val open = wasOpen || g.frame(now, otherAudio.stillPlaying(), SignalStats.rms(frame))
+                    if (open && !wasOpen) main.post { quietGateOpened(g, route) }
+                    !open
+                }
+            },
         )
         if (!cap.start()) {
             otherAudio.resume()
@@ -471,9 +489,29 @@ class DictationService : AccessibilityService() {
         dictationField = field
         button?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         setState(MicButton.State.RECORDING)
+        if (gate != null && !gate.isOpen) button?.setWaiting(true)
         preloadModel(warm = true)
         if (cleanupStyle(field) != null) net.execute { cleaner.prewarm() }
         return true
+    }
+
+    /** The dictation's [QuietGate], while other audio it paused may still be heard. */
+    private var quietGate: QuietGate? = null
+
+    /** When isMusicActive went false, ms after the tap (-1: not yet): traced beside the gate's own signal. */
+    @Volatile private var mixQuietMs = -1L
+
+    /** Main thread: the other audio has gone quiet, so the mic now listens. */
+    private fun quietGateOpened(g: QuietGate, route: OtherAudio.Route?) {
+        // Timings only: how long players take to stop, and the car to go quiet, per route.
+        Trace.event(
+            "quiet_gate", "route" to route, "stoppedMs" to g.stoppedAfterMs,
+            "openMs" to g.openedAfterMs, "why" to g.why, "mixQuietMs" to mixQuietMs,
+            "loudestBlanked" to "%.4f".format(g.loudestBlankedRms),
+        )
+        if (quietGate !== g || state != MicButton.State.RECORDING) return
+        button?.setWaiting(false)
+        button?.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
     }
 
     /** ✕: stop listening and throw the audio away. Nothing is typed. */
@@ -481,6 +519,7 @@ class DictationService : AccessibilityService() {
         val cap = capture ?: return
         capture = null
         val audioMs = cap.stop().size / 16
+        quietGate = null
         otherAudio.resume()
         asr.execute { dropChunker() }
         button?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
@@ -494,6 +533,8 @@ class DictationService : AccessibilityService() {
         val cap = capture ?: return
         capture = null
         val pcm = cap.stop()
+        quietGate?.let { if (!it.isOpen) Trace.event("quiet_gate_unopened", "stoppedMs" to it.stoppedAfterMs) }
+        quietGate = null
         otherAudio.resume()
         button?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         setState(MicButton.State.BUSY)

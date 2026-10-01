@@ -14,6 +14,8 @@ class AudioCapture(
     private val onLevel: ((Float) -> Unit)? = null,
     /** Each 30 ms frame as it arrives, on the mic thread (the array is the caller's to keep). */
     private val onFrame: ((ShortArray) -> Unit)? = null,
+    /** Shown each frame on the mic thread before it's kept: true blanks it to silence (a [QuietGate] still shut). */
+    private val blank: ((ShortArray) -> Boolean)? = null,
 ) {
     private var record: AudioRecord? = null
     private var thread: Thread? = null
@@ -54,8 +56,11 @@ class AudioCapture(
             if (n < 0) break
             if (n == 0) continue
             val copy = frame.copyOf(n)
+            // Blanked, not dropped: the recording keeps its length, so the pause
+            // detector's timings and the waveform still line up.
+            if (blank?.invoke(copy) == true) copy.fill(0)
             synchronized(chunks) { chunks.add(copy) }
-            onLevel?.invoke(SignalStats.rms(frame, n))
+            onLevel?.invoke(SignalStats.rms(copy, n))
             onFrame?.invoke(copy)
         }
     }

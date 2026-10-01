@@ -121,6 +121,7 @@ class MicButton(context: Context) : FrameLayout(context) {
         panel.visibility = if (recording) VISIBLE else GONE
         face.visibility = if (recording) GONE else VISIBLE
         if (recording) waveform.clear()
+        if (!recording) setWaiting(false)
         icon.visibility = if (state == State.BUSY) INVISIBLE else VISIBLE
         spinner.visibility = if (state == State.BUSY) VISIBLE else GONE
         face.contentDescription = if (state == State.BUSY) "Transcribing" else "Dictate"
@@ -144,6 +145,15 @@ class MicButton(context: Context) : FrameLayout(context) {
         icon.alpha = if (faded) ICON_IDLE_ALPHA else 1f
     }
 
+    /**
+     * Listening, but not hearing yet: music that was playing is still going
+     * quiet. The waveform stays dim until it lights up to say "talk now".
+     */
+    fun setWaiting(on: Boolean) {
+        waveform.alpha = if (on) WAITING_ALPHA else 1f
+        waveform.contentDescription = if (on) "Pausing audio" else null
+    }
+
     /** Loudness of the last 30 ms (RMS, 0..1). */
     fun setLevel(rms: Float) {
         if (state == State.RECORDING) waveform.push(rms)
@@ -153,6 +163,7 @@ class MicButton(context: Context) : FrameLayout(context) {
 
     companion object {
         const val SIZE_DP = 52
+        private const val WAITING_ALPHA = 0.3f
         const val ACTION_DP = 40
         const val PANEL_WIDTH_DP = 232
         const val PANEL_HEIGHT_DP = 52

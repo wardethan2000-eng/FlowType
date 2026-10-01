@@ -50,7 +50,7 @@ class HistoryActivity : AppCompatActivity() {
                     })
                 }
                 addView(group)
-                text("Only on this phone, the newest 50. Never uploaded or logged.", secondary = true)
+                text("Only on this phone, the newest ${HistoryEntry.MAX}. Never uploaded or logged.", secondary = true)
             }
             search = field("Search")
             search.addTextChangedListener(object : TextWatcher {
