@@ -22,8 +22,7 @@ import com.ethanward.flowtype.R
 import com.ethanward.flowtype.asr.AsrModels
 import com.ethanward.flowtype.asr.Downloads
 import com.ethanward.flowtype.asr.ModelStore
-import com.ethanward.flowtype.cleanup.ApiKeyStore
-import com.ethanward.flowtype.cleanup.CleanupConfig
+import com.ethanward.flowtype.cleanup.CleanupSetup
 import com.ethanward.flowtype.cleanup.Prices
 import com.ethanward.flowtype.cleanup.UsageStore
 import com.ethanward.flowtype.dictionary.DictionaryStore
@@ -115,13 +114,14 @@ class MainActivity : AppCompatActivity() {
             1 -> "Your dictations, kept 1 day on this phone"
             else -> "Your dictations, kept $d days on this phone"
         }
-        val keys = ApiKeyStore(this)
+        val setup = CleanupSetup.current(this, prefs)
+        val week = UsageStore(this).summary().week
         cleanupSummary.text = when {
             !prefs.cleanupEnabled -> "Off"
-            !keys.has() -> "Add your OpenAI key to turn it on"
+            !setup.ready -> "Set up ${setup.preset.label} to turn it on"
             prefs.keyProblem != null -> "Key problem: " + CleanupSettingsActivity.problemText(prefs.keyProblem!!)
-            else -> "On · " + CleanupConfig.byId(prefs.cleanupModel).label +
-                " · " + Prices.format(UsageStore(this).summary().week.dollars) + " this week"
+            else -> "On · ${setup.preset.label} · ${setup.modelLabel} · " +
+                (if (Prices.known(setup.config)) Prices.format(week.dollars) else "%,d tokens".format(week.tokens)) + " this week"
         }
         renderStatus(model.label, store.isInstalled(model))
     }

@@ -37,10 +37,9 @@ import com.ethanward.flowtype.audio.QuietGate
 import com.ethanward.flowtype.audio.SignalStats
 import com.ethanward.flowtype.audio.Wav
 import com.ethanward.flowtype.cleanup.AlreadyClean
-import com.ethanward.flowtype.cleanup.ApiKeyStore
 import com.ethanward.flowtype.cleanup.AppStyle
 import com.ethanward.flowtype.cleanup.Cleaner
-import com.ethanward.flowtype.cleanup.CleanupConfig
+import com.ethanward.flowtype.cleanup.CleanupSetup
 import com.ethanward.flowtype.cleanup.UsageStore
 import com.ethanward.flowtype.dictionary.Corrections
 import com.ethanward.flowtype.dictionary.DictionaryPass
@@ -76,8 +75,7 @@ class DictationService : AccessibilityService() {
     private lateinit var log: InsertionLog
     private lateinit var dictionary: DictionaryStore
     private lateinit var history: HistoryStore
-    private lateinit var keys: ApiKeyStore
-    private lateinit var cleaner: Cleaner
+    private lateinit var usage: UsageStore
     private lateinit var otherAudio: OtherAudio
     private val net = Executors.newSingleThreadExecutor { Thread(it, "flowtype-cleanup") }
     private lateinit var windowManager: WindowManager
@@ -117,8 +115,7 @@ class DictationService : AccessibilityService() {
         log = InsertionLog(this)
         dictionary = DictionaryStore(this)
         history = HistoryStore(this) { prefs.historyDays }
-        keys = ApiKeyStore(this)
-        cleaner = Cleaner(keys::load, UsageStore(this))
+        usage = UsageStore(this)
         otherAudio = OtherAudio(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         instance = this
@@ -491,7 +488,7 @@ class DictationService : AccessibilityService() {
         setState(MicButton.State.RECORDING)
         if (gate != null && !gate.isOpen) button?.setWaiting(true)
         preloadModel(warm = true)
-        if (cleanupStyle(field) != null) net.execute { cleaner.prewarm() }
+        if (cleanupStyle(field) != null) net.execute { CleanupSetup.current(this).takeIf { it.ready }?.provider()?.prewarm() }
         return true
     }
 
@@ -603,16 +600,18 @@ class DictationService : AccessibilityService() {
         }
     }
 
-    /** Cleanup is used when it's on, a key is saved, and the field suits it. */
+    /** Cleanup is used when it's on, its provider is set up, and the field suits it. */
     private fun cleanupStyle(field: EditorInfo): String? {
-        if (!prefs.cleanupEnabled || !keys.has()) return null
+        if (!prefs.cleanupEnabled || !CleanupSetup.looksReady(this, prefs)) return null
         return AppStyle.forField(field.packageName, field.inputType, field.imeOptions)
     }
 
     /** net thread. The cleaned text, or [local] if cleanup fails in any way. */
     private fun cleanup(local: String, style: String, pass: DictionaryPass, words: List<String>, before: String?): Pair<String, String> {
-        val config = CleanupConfig.byId(prefs.cleanupModel)
-        val result = cleaner.clean(local, style, words, config, prefs.cleanupDeadlineMs, before)
+        val setup = CleanupSetup.current(this, prefs)
+        val config = setup.config
+        val result = Cleaner({ setup.keyToSend }, usage, setup.provider())
+            .clean(local, style, words, config, prefs.cleanupDeadlineMs, before)
         when (result) {
             is Cleaner.Result.Cleaned -> {
                 Trace.event(
@@ -634,7 +633,7 @@ class DictationService : AccessibilityService() {
                 if (result.reason.keyProblem) {
                     val first = prefs.keyProblem != result.reason.name
                     prefs.keyProblem = result.reason.name
-                    if (first) main.post { toast(keyProblemMessage(result.reason)) }
+                    if (first) main.post { toast(keyProblemMessage(result.reason, setup.preset.label)) }
                 }
                 val typed = when (result.reason) {
                     Cleaner.Reason.SHORT, Cleaner.Reason.CLEAN -> AlreadyClean.finish(local, style)
@@ -645,9 +644,9 @@ class DictationService : AccessibilityService() {
         }
     }
 
-    private fun keyProblemMessage(reason: Cleaner.Reason) = when (reason) {
-        Cleaner.Reason.KEY_REJECTED -> "OpenAI didn't accept your key, so this was typed without AI cleanup"
-        Cleaner.Reason.NO_CREDIT -> "Your OpenAI account is out of credit, so this was typed without AI cleanup"
+    private fun keyProblemMessage(reason: Cleaner.Reason, provider: String) = when (reason) {
+        Cleaner.Reason.KEY_REJECTED -> "$provider didn't accept your key, so this was typed without AI cleanup"
+        Cleaner.Reason.NO_CREDIT -> "Your $provider account is out of credit, so this was typed without AI cleanup"
         else -> "Your key can't use the cleanup model, so this was typed without AI cleanup"
     }
 

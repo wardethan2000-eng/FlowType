@@ -23,6 +23,9 @@ data class CleanupConfig(
         val DEFAULT = LUNA_FAST
 
         fun byId(id: String?) = ALL.firstOrNull { it.id == id } ?: DEFAULT
+
+        /** A model on a provider other than OpenAI: no reasoning or tier settings. */
+        fun of(provider: ProviderPreset, model: String) = CleanupConfig("${provider.id}:$model", model, model, null, null)
     }
 }
 

@@ -3,6 +3,7 @@ package com.ethanward.flowtype
 import android.content.Context
 import com.ethanward.flowtype.asr.AsrModels
 import com.ethanward.flowtype.cleanup.CleanupConfig
+import com.ethanward.flowtype.cleanup.Providers
 
 /** Small settings shared by the screens and the service. */
 class Prefs(context: Context) {
@@ -53,9 +54,25 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean("cleanup_on", true)
         set(value) = prefs.edit().putBoolean("cleanup_on", value).apply()
 
+    /** OpenAI's model and tier: a [CleanupConfig] id. */
     var cleanupModel: String
         get() = prefs.getString("cleanup_model", null) ?: CleanupConfig.DEFAULT.id
         set(value) = prefs.edit().putString("cleanup_model", value).apply()
+
+    /** Whose AI cleans the text, for "your own AI": a [com.ethanward.flowtype.cleanup.ProviderPreset] id. */
+    var cleanupProvider: String
+        get() = prefs.getString("cleanup_provider", null) ?: Providers.DEFAULT.id
+        set(value) = prefs.edit().putString("cleanup_provider", value).apply()
+
+    /** The model picked for a provider other than OpenAI; null until one is picked. */
+    fun providerModel(provider: String): String? = prefs.getString("provider_model_$provider", null)
+
+    fun setProviderModel(provider: String, model: String) = prefs.edit().putString("provider_model_$provider", model).apply()
+
+    /** "Your own server"'s address as typed. */
+    var customServer: String?
+        get() = prefs.getString("custom_server", null)
+        set(value) = prefs.edit().putString("custom_server", value).apply()
 
     /**
      * How long to wait for cleanup before typing the local text (PLAN §4.5).

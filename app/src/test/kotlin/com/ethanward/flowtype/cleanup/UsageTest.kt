@@ -14,6 +14,12 @@ class UsageTest {
         assertEquals(0.000042, Prices.dollars(CleanupConfig.LUNA, u), 1e-12)
         assertEquals(0.000084, Prices.dollars(CleanupConfig.LUNA_FAST, u), 1e-12)
         assertEquals(0.000056, Prices.dollars(CleanupConfig.NANO, u), 1e-12)
+        // Haiku: 100 × $1 + 1,200 × $0.10 + 40 × $5, per million.
+        assertEquals(0.00042, Prices.dollars(CleanupConfig.of(Providers.ANTHROPIC, "claude-haiku-4-5"), u), 1e-12)
+        // Unknown prices count as nothing, and say so.
+        val groq = CleanupConfig.of(Providers.GROQ, "some-open-model")
+        assertEquals(0.0, Prices.dollars(groq, u), 0.0)
+        assertEquals(false, Prices.known(groq))
     }
 
     @Test

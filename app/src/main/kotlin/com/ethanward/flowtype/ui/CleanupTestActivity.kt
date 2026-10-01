@@ -109,22 +109,23 @@ class CleanupTestActivity : AppCompatActivity() {
 
     private fun replay() {
         if (running) return
-        if (!keys.has()) return log("Save a key first.")
         val prefs = Prefs(this)
+        val setup = com.ethanward.flowtype.cleanup.CleanupSetup.current(this, prefs)
+        if (!setup.ready) return log("Set up ${setup.preset.label} in AI cleanup first.")
         val entries = HistoryStore(this) { prefs.historyDays }.list().reversed()
         val dict = DictionaryStore(this).load()
         val words = dict.words + dict.replacements.map { it.to }.filter { t -> t.any(Char::isUpperCase) }
-        val config = CleanupConfig.byId(prefs.cleanupModel)
+        val config = setup.config
         val out = File(filesDir, "replay.jsonl")
         running = true
         output.text = ""
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         thread(name = "flowtype-cleanup-replay") {
             try {
-                val cleaner = Cleaner(keys::load, UsageStore(this@CleanupTestActivity))
+                val cleaner = Cleaner({ setup.keyToSend }, UsageStore(this@CleanupTestActivity), setup.provider())
                 val lines = StringBuilder()
                 val outcomes = LinkedHashMap<String, Int>()
-                log("== ${entries.size} dictations, ${config.label}, prompt v${CleanupPrompt.VERSION}")
+                log("== ${entries.size} dictations, ${setup.preset.label} ${config.label}, prompt v${CleanupPrompt.VERSION}")
                 for ((i, e) in entries.withIndex()) {
                     // History has no field type: the app's style, as a plain text field.
                     val style = AppStyle.forField(e.app, android.text.InputType.TYPE_CLASS_TEXT, 0) ?: AppStyle.GENERAL

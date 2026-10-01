@@ -12,14 +12,17 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * The user's OpenAI key, AES-GCM encrypted under a key that never leaves the
- * Android Keystore, in the app's private storage (PLAN §4.9). The file is
- * useless off this phone, and the app has backups turned off.
+ * One provider's key (a [ProviderPreset.id]), AES-GCM encrypted under a key
+ * that never leaves the Android Keystore, in the app's private storage
+ * (PLAN §4.9). The file is useless off this phone, and the app has backups
+ * turned off. OpenAI's key keeps the file and alias it had before there were
+ * other providers.
  *
  * Never log what [load] returns.
  */
-class ApiKeyStore(context: Context) {
-    private val file = File(context.noBackupFilesDir, "openai-key.bin")
+class ApiKeyStore(context: Context, provider: String = Providers.OPENAI.id) {
+    private val file = File(context.noBackupFilesDir, if (provider == Providers.OPENAI.id) "openai-key.bin" else "key-$provider.bin")
+    private val alias = if (provider == Providers.OPENAI.id) "flowtype-openai-key" else "flowtype-key-$provider"
 
     fun has(): Boolean = file.exists()
 
@@ -42,15 +45,15 @@ class ApiKeyStore(context: Context) {
 
     fun remove() {
         file.delete()
-        KeyStore.getInstance(KEYSTORE).apply { load(null) }.deleteEntry(ALIAS)
+        KeyStore.getInstance(KEYSTORE).apply { load(null) }.deleteEntry(alias)
     }
 
     private fun secret(): SecretKey {
         val ks = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-        (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }
+        (ks.getKey(alias, null) as? SecretKey)?.let { return it }
         val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE)
         gen.init(
-            KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)
@@ -61,16 +64,14 @@ class ApiKeyStore(context: Context) {
 
     companion object {
         private const val KEYSTORE = "AndroidKeyStore"
-        private const val ALIAS = "flowtype-openai-key"
         private const val TRANSFORM = "AES/GCM/NoPadding"
         private const val IV_BYTES = 12
 
         /** `sk-…a1B2`: all the UI ever shows of a saved key. */
-        fun mask(key: String): String = if (key.length <= 8) "sk-…" else "${key.take(3)}…${key.takeLast(4)}"
+        fun mask(key: String): String = if (key.length <= 8) "…" else "${key.take(3)}…${key.takeLast(4)}"
 
         /** Pasted keys often carry spaces or a trailing newline. */
         fun normalize(pasted: String): String = pasted.filterNot { it.isWhitespace() }
 
-        fun looksValid(key: String): Boolean = key.startsWith("sk-") && key.length >= 20
     }
 }
