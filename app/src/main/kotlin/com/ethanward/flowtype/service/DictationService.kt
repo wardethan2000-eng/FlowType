@@ -118,7 +118,7 @@ class DictationService : AccessibilityService() {
         dictionary = DictionaryStore(this)
         history = HistoryStore(this) { prefs.historyDays }
         keys = ApiKeyStore(this)
-        cleaner = Cleaner(keys, UsageStore(this))
+        cleaner = Cleaner(keys::load, UsageStore(this))
         otherAudio = OtherAudio(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         instance = this

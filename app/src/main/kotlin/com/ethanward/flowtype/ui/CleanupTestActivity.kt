@@ -121,7 +121,7 @@ class CleanupTestActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         thread(name = "flowtype-cleanup-replay") {
             try {
-                val cleaner = Cleaner(keys, UsageStore(this@CleanupTestActivity))
+                val cleaner = Cleaner(keys::load, UsageStore(this@CleanupTestActivity))
                 val lines = StringBuilder()
                 val outcomes = LinkedHashMap<String, Int>()
                 log("== ${entries.size} dictations, ${config.label}, prompt v${CleanupPrompt.VERSION}")

@@ -2,28 +2,21 @@ package com.ethanward.flowtype.cleanup
 
 import com.ethanward.flowtype.Trace
 import com.ethanward.flowtype.dictionary.SnippetTokens
-import okhttp3.Call
-import okhttp3.ConnectionPool
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
-import java.io.IOException
-import java.io.InterruptedIOException
-import java.net.ConnectException
-import java.net.UnknownHostException
-import java.util.concurrent.TimeUnit
 
 /**
- * AI cleanup (PLAN §4.5): one streamed Responses API call per dictation, with
- * the guards and a deadline. Every failure path returns [Result.Fallback], and
- * the caller types the local text: dictation never stops working because of
- * the network or the key.
+ * AI cleanup (PLAN §4.5): one streamed call per dictation through a
+ * [CleanupProvider], with the guards and a deadline. Every failure path
+ * returns [Result.Fallback], and the caller types the local text: dictation
+ * never stops working because of the network or the key.
  *
  * Calls block; run them off the main thread. Never logs text or the key.
  */
-class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = null) {
+class Cleaner(
+    /** The saved key, or null ([ApiKeyStore.load]). */
+    private val key: () -> String?,
+    private val usage: UsageStore? = null,
+    private val provider: CleanupProvider = OpenAiResponses(),
+) {
 
     enum class Reason(val keyProblem: Boolean = false) {
         NO_KEY, SHORT, CLEAN, OFFLINE, DEADLINE,
@@ -37,23 +30,11 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
         data class Fallback(val reason: Reason, val totalMs: Long = 0, val http: Int = 0, val firstTokenMs: Long = -1) : Result
     }
 
-    private val client = OkHttpClient.Builder()
-        .connectionPool(ConnectionPool(1, 5, TimeUnit.MINUTES))
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
-
     /**
      * Opens the HTTPS connection while you're still talking, so the cleanup
      * call doesn't pay for DNS, TCP and TLS (PLAN §2). No key is sent.
      */
-    fun prewarm() {
-        val req = Request.Builder().url("https://api.openai.com/v1/models").head().build()
-        client.newCall(req).enqueue(object : okhttp3.Callback {
-            override fun onFailure(call: Call, e: IOException) {}
-            override fun onResponse(call: Call, response: okhttp3.Response) = response.close()
-        })
-    }
+    fun prewarm() = provider.prewarm()
 
     fun clean(
         input: String,
@@ -63,160 +44,66 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
         deadlineMs: Long,
         beforeCursor: String? = null,
     ): Result {
-        val key = keys.load() ?: return Result.Fallback(Reason.NO_KEY)
+        val key = key() ?: return Result.Fallback(Reason.NO_KEY)
         // "sounds good", "on my way": already right, and instant without the network.
         // Snippets are typed as saved: only the words around them count here.
         val spoken = SnippetTokens.strip(input)
         if (Guards.contentWords(spoken).size <= SHORT_WORDS) return Result.Fallback(Reason.SHORT)
         // Short and plain: the phone's text is already the answer, a second sooner.
         if (AlreadyClean.check(spoken, style)) return Result.Fallback(Reason.CLEAN)
-        return request(key, input, style, dictionary, config, deadlineMs, beforeCursor)
+        return request(CleanupCall(key, config, input, dictionary, style, beforeCursor), deadlineMs)
     }
 
     /** The Test key button: a tiny real cleanup with a generous deadline. */
     fun test(key: String, config: CleanupConfig): Result =
-        request(key, "um so this is a quick test of my key", AppStyle.GENERAL, emptyList(), config, 15_000)
+        request(CleanupCall(key, config, "um so this is a quick test of my key", emptyList(), AppStyle.GENERAL, null), 15_000)
 
-    private fun request(
-        key: String,
-        input: String,
-        style: String,
-        dictionary: List<String>,
-        config: CleanupConfig,
-        deadlineMs: Long,
-        beforeCursor: String? = null,
-    ): Result {
-        val retention = if (retentionRejected) null else CleanupRequest.CACHE_RETENTION
-        val body = CleanupRequest.body(config, input, dictionary, style, beforeCursor?.takeLast(80)?.ifBlank { null }, retention)
-        val request = Request.Builder()
-            .url(CleanupRequest.URL)
-            .header("Authorization", "Bearer $key")
-            .header("Accept", "text/event-stream")
-            .post(body.toString().toRequestBody("application/json".toMediaType()))
-            .build()
-        val call = client.newCall(request)
-        call.timeout().timeout(deadlineMs, TimeUnit.MILLISECONDS)
-        val start = System.nanoTime()
-        fun ms() = (System.nanoTime() - start) / 1_000_000
-        var firstTokenMs = -1L
-        var streamed: ResponseStream? = null
-        var billed = false
-        try {
-            call.execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    val error = resp.body?.string().orEmpty()
-                    if (retention != null && rejectsRetention(resp.code, error)) {
-                        // A model without the day-long cache: stop asking, and retry at once.
-                        retentionRejected = true
-                        Trace.warn("cache_retention_rejected", "model" to config.model)
-                        return request(key, input, style, dictionary, config, maxOf(1, deadlineMs - ms()), beforeCursor)
-                    }
-                    val reason = errorReason(resp.code, error)
-                    return Result.Fallback(reason, ms(), resp.code)
-                }
-                billed = true
-                val stream = ResponseStream().also { streamed = it }
-                val source = resp.body!!.source()
-                var judged = false
-                while (!stream.done) {
-                    val line = source.readUtf8Line() ?: break
-                    if (stream.line(line)) firstTokenMs = ms()
-                    // Early abort: an answer that opens like a reply is thrown
-                    // away on its first words, not after the whole reply.
-                    if (!judged && Guards.canJudgeStart(stream.text.toString(), finished = false)) {
-                        judged = true
-                        if (Guards.soundsLikeAssistant(input, stream.text.toString())) {
-                            call.cancel()
-                            return Result.Fallback(Reason.ASSISTANT, ms())
-                        }
-                    }
-                }
-                stream.line("")
-                if (stream.error != null) return Result.Fallback(Reason.HTTP_ERROR, ms(), resp.code)
-                val output = tidy(stream.text.toString(), input)
-                val verdict = Guards.check(input, output)
-                if (verdict != Guards.Verdict.OK) {
-                    // Counts only, to tune the guards: which answers they throw away, and by how much.
-                    Trace.event(
-                        "guard_rejected", "verdict" to verdict, "style" to style,
-                        "wordsIn" to Guards.contentWords(input).size, "wordsOut" to Guards.words(output).size,
-                        "rawWordsIn" to Guards.words(input).size,
-                    )
-                    return Result.Fallback(
-                        when (verdict) {
-                            Guards.Verdict.TOO_LONG -> Reason.TOO_LONG
-                            Guards.Verdict.TOO_SHORT -> Reason.TOO_SHORT
-                            Guards.Verdict.ASSISTANT -> Reason.ASSISTANT
-                            Guards.Verdict.SNIPPETS -> Reason.SNIPPETS
-                            else -> Reason.EMPTY
-                        },
-                        ms(),
-                    )
-                }
-                return Result.Cleaned(output, firstTokenMs, ms(), stream.cachedTokens, stream.inputTokens)
+    private fun request(call: CleanupCall, deadlineMs: Long): Result {
+        val input = call.transcript
+        var judged = false
+        val streamed = provider.stream(call, deadlineMs) { soFar ->
+            // Early stop: an answer that opens like a reply is thrown away on
+            // its first words, not after the whole reply.
+            if (!judged && Guards.canJudgeStart(soFar, finished = false)) {
+                judged = true
+                if (Guards.soundsLikeAssistant(input, soFar)) return@stream false
             }
-        } catch (e: InterruptedIOException) {
-            billed = true // OpenAI may finish, and bill, a request we stopped waiting for
-            return Result.Fallback(Reason.DEADLINE, ms(), firstTokenMs = firstTokenMs)
-        } catch (e: UnknownHostException) {
-            return Result.Fallback(Reason.OFFLINE, ms())
-        } catch (e: ConnectException) {
-            return Result.Fallback(Reason.OFFLINE, ms())
-        } catch (e: IOException) {
-            Trace.warn("cleanup_io", "error" to e.javaClass.simpleName)
-            return Result.Fallback(if (call.isCanceled()) Reason.DEADLINE else Reason.ERROR, ms(), firstTokenMs = firstTokenMs)
-        } finally {
-            if (billed) record(config, streamed, body.toString())
+            true
+        }
+        streamed.usage?.let { u -> usage?.let { store -> runCatching { store.record(call.config, u) } } }
+        return when (streamed) {
+            is Streamed.Stopped -> Result.Fallback(Reason.ASSISTANT, streamed.totalMs)
+            is Streamed.Failed -> Result.Fallback(streamed.reason, streamed.totalMs, streamed.http, streamed.firstTokenMs)
+            is Streamed.Done -> judge(call, streamed)
         }
     }
 
-    /** Tokens as OpenAI reported them, or estimated for a request cut short. */
-    private fun record(config: CleanupConfig, stream: ResponseStream?, requestBody: String) {
-        val store = usage ?: return
-        val s = stream
-        val u = if (s != null && s.inputTokens >= 0) {
-            lastCached = maxOf(0, s.cachedTokens)
-            Usage(s.inputTokens, maxOf(0, s.cachedTokens), maxOf(0, s.outputTokens))
-        } else {
-            val input = CleanupPrompt.estimateTokens(requestBody)
-            Usage(input, minOf(lastCached, input), CleanupPrompt.estimateTokens(s?.text?.toString().orEmpty()), estimated = true)
+    /** The guards on a finished answer. */
+    private fun judge(call: CleanupCall, done: Streamed.Done): Result {
+        val input = call.transcript
+        val output = tidy(done.text, input)
+        val verdict = Guards.check(input, output)
+        if (verdict == Guards.Verdict.OK) {
+            return Result.Cleaned(output, done.firstTokenMs, done.totalMs, done.cachedTokens, done.inputTokens)
         }
-        runCatching { store.record(config, u) }
+        // Counts only, to tune the guards: which answers they throw away, and by how much.
+        Trace.event(
+            "guard_rejected", "verdict" to verdict, "style" to call.style,
+            "wordsIn" to Guards.contentWords(input).size, "wordsOut" to Guards.words(output).size,
+            "rawWordsIn" to Guards.words(input).size,
+        )
+        val reason = when (verdict) {
+            Guards.Verdict.TOO_LONG -> Reason.TOO_LONG
+            Guards.Verdict.TOO_SHORT -> Reason.TOO_SHORT
+            Guards.Verdict.ASSISTANT -> Reason.ASSISTANT
+            Guards.Verdict.SNIPPETS -> Reason.SNIPPETS
+            else -> Reason.EMPTY
+        }
+        return Result.Fallback(reason, done.totalMs)
     }
-
-    /** OpenAI refused prompt_cache_retention once; this process stops sending it. */
-    @Volatile private var retentionRejected = false
-
-    /** Cached tokens on the last complete answer: the best guess for one cut short. */
-    @Volatile private var lastCached = 0
-
-
 
     companion object {
         const val SHORT_WORDS = 3
-
-        /** What an error response means, in the terms the screens use. */
-        fun errorReason(http: Int, body: String): Reason {
-            val error = runCatching { JSONObject(body).optJSONObject("error") }.getOrNull()
-            val code = error?.optString("code").orEmpty()
-            val type = error?.optString("type").orEmpty()
-            return when {
-                http == 401 -> Reason.KEY_REJECTED
-                http == 429 && (code == "insufficient_quota" || type == "insufficient_quota") -> Reason.NO_CREDIT
-                http == 429 -> Reason.RATE_LIMITED
-                http == 404 || code == "model_not_found" -> Reason.MODEL_UNAVAILABLE
-                http == 403 -> Reason.MODEL_UNAVAILABLE
-                else -> Reason.HTTP_ERROR
-            }
-        }
-
-        /** A 400 that names the cache retention parameter, i.e. this model can't keep it. */
-        fun rejectsRetention(http: Int, body: String): Boolean {
-            if (http != 400) return false
-            val error = runCatching { JSONObject(body).optJSONObject("error") }.getOrNull() ?: return false
-            return error.optString("param") == "prompt_cache_retention" ||
-                error.optString("message").contains("prompt_cache_retention")
-        }
 
         /**
          * Trims the answer, drops quotes it wrapped around the whole thing, and

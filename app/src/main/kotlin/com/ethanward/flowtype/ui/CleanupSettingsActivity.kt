@@ -32,7 +32,7 @@ class CleanupSettingsActivity : AppCompatActivity() {
     private lateinit var keyStatus: TextView
     private lateinit var keyField: EditText
     private lateinit var testResult: TextView
-    private val cleaner by lazy { Cleaner(keys, UsageStore(this)) }
+    private val cleaner by lazy { Cleaner(keys::load, UsageStore(this)) }
     private lateinit var costs: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
