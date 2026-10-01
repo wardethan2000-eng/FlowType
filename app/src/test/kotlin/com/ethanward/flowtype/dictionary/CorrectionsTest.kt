@@ -38,7 +38,7 @@ class CorrectionsTest {
     @Test
     fun knownWordsAndShortDictationsAreSkipped() {
         assertNull(Corrections.find(typed, "I printed it on the Bambu today.", setOf("Bambu")))
-        assertNull(Corrections.find("the bamboo", "the Bambu", emptySet()))
+        assertNull(Corrections.find("the bamboo", "Hi. the Bambu", emptySet()))
     }
 
     @Test
@@ -52,7 +52,7 @@ class CorrectionsTest {
         assertEquals("unchanged", Corrections.check(typed, typed, emptySet()).why)
         assertEquals("lowercase", Corrections.check(typed, "I printed it on the bamboos today.", emptySet()).why)
         assertEquals("known", Corrections.check(typed, "I printed it on the Bambu today.", setOf("Bambu")).why)
-        assertEquals("short_dictation", Corrections.check("the bamboo", "the Bambu", emptySet()).why)
+        assertEquals("short_dictation", Corrections.check("the bamboo", "Hi. the Bambu", emptySet()).why)
         assertEquals("fewer_words", Corrections.check(typed, "printed", emptySet()).why)
         assertEquals("no_single_change", Corrections.check(typed, "I printed it on the Bambu yesterday.", emptySet()).why)
     }
@@ -61,5 +61,12 @@ class CorrectionsTest {
     fun aSentMessageLeavesTheField() {
         assertEquals(true, Corrections.check(typed, "", emptySet()).dictationGone)
         assertEquals(false, Corrections.check(typed, "I printed it on the Bambu today.", emptySet()).dictationGone)
+    }
+
+    @Test
+    fun aShortDictationAloneInAChatBoxCounts() {
+        assertEquals("Bambu", Corrections.find("Bamboo.", "Bambu.", emptySet()))
+        assertEquals("Bambu", Corrections.find("the bamboo", "the Bambu", emptySet()))
+        assertEquals("unlike", Corrections.check("Bamboo.", "Hi", emptySet()).why)
     }
 }

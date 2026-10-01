@@ -10,7 +10,11 @@ package com.ethanward.flowtype.dictionary
  * a correction.
  */
 object Corrections {
-    /** Shorter dictations give too little around the word to be sure it's ours. */
+    /**
+     * Shorter dictations give too little around the word to be sure it's ours:
+     * they count only when the field holds nothing else (a chat box), and the
+     * new word looks like the one it replaced.
+     */
     private const val MIN_WORDS = 3
 
     /**
@@ -28,8 +32,10 @@ object Corrections {
     fun check(typed: String, now: CharSequence, known: Set<String>): Check {
         val t = words(typed)
         val c = words(now.toString())
-        if (t.size < MIN_WORDS) return Check(null, "short_dictation")
+        if (t.isEmpty()) return Check(null, "short_dictation")
         if (c.size < t.size) return Check(null, "fewer_words")
+        val short = t.size < MIN_WORDS
+        if (short && c.size != t.size) return Check(null, "short_dictation")
         var changedMany = false
         for (start in 0..c.size - t.size) {
             var diff = -1
@@ -52,12 +58,29 @@ object Corrections {
             val word = c[start + diff].bare
             if (word.count { it.isLetter() } < 2) return Check(null, "too_short")
             if (known.any { it == word }) return Check(null, "known")
+            if (short && !alike(t[diff].bare, word)) return Check(null, "unlike")
             // Words are for spellings the phone gets wrong: names, brands, PETG. An
             // ordinary lowercase word ("Bambu" put back to "bamboo") needs no entry.
             if (word.none { it.isUpperCase() || it.isDigit() }) return Check(null, "lowercase")
             return Check(word, "offered")
         }
         return Check(null, if (changedMany) "no_single_change" else "unchanged")
+    }
+
+    /** At most half the longer word's letters differ ("bamboo" / "Bambu"; not "bamboo" / "Hi"). */
+    private fun alike(a: String, b: String): Boolean {
+        val x = a.lowercase()
+        val y = b.lowercase()
+        var prev = IntArray(y.length + 1) { it }
+        for (i in 1..x.length) {
+            val cur = IntArray(y.length + 1)
+            cur[0] = i
+            for (j in 1..y.length) {
+                cur[j] = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + if (x[i - 1] == y[j - 1]) 0 else 1)
+            }
+            prev = cur
+        }
+        return prev[y.length] * 2 <= maxOf(x.length, y.length)
     }
 
     private class Word(val bare: String, val endsSentence: Boolean)
