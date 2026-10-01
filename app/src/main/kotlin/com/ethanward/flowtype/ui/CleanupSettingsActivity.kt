@@ -110,7 +110,7 @@ class CleanupSettingsActivity : AppCompatActivity() {
             card {
                 text("If the answer takes longer than this, Flowtype types the phone's own text.", secondary = true)
                 val group = RadioGroup(context).apply { orientation = RadioGroup.HORIZONTAL }
-                for ((ms, label) in listOf(1200L to "1.2 s", 1800L to "1.8 s", 2500L to "2.5 s")) {
+                for ((ms, label) in listOf(1800L to "1.8 s", 3000L to "3 s", 5000L to "5 s")) {
                     group.addView(RadioButton(context).apply {
                         id = View.generateViewId()
                         text = label

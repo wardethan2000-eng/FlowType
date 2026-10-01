@@ -27,7 +27,6 @@ import com.ethanward.flowtype.cleanup.CleanupConfig
 import com.ethanward.flowtype.cleanup.Prices
 import com.ethanward.flowtype.cleanup.UsageStore
 import com.ethanward.flowtype.dictionary.DictionaryStore
-import com.ethanward.flowtype.notes.NotesStore
 import com.ethanward.flowtype.service.DictationService
 import com.google.android.material.R as M
 import com.google.android.material.card.MaterialCardView
@@ -45,7 +44,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cleanupSummary: TextView
     private lateinit var historySummary: TextView
     private lateinit var buttonSummary: TextView
-    private lateinit var notesSummary: TextView
     private lateinit var tryCard: MaterialCardView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,8 +58,6 @@ class MainActivity : AppCompatActivity() {
             }
             section("Settings")
             card(padded = false) {
-                notesSummary = navRow("Notes") { open(NotesActivity::class.java) }
-                divider()
                 cleanupSummary = navRow("AI cleanup") { open(CleanupSettingsActivity::class.java) }
                 divider()
                 dictionarySummary = navRow("Dictionary") { open(DictionaryActivity::class.java) }
@@ -112,9 +108,6 @@ class MainActivity : AppCompatActivity() {
             d.words.size.takeIf { it > 0 }?.let { "$it word" + if (it == 1) "" else "s" },
             d.replacements.size.takeIf { it > 0 }?.let { "$it replacement" + if (it == 1) "" else "s" },
         ).filterNotNull().joinToString(" · ")
-        val noteCount = NotesStore(this).list().size
-        notesSummary.text = (if (noteCount == 0) "No notes yet" else "$noteCount note" + if (noteCount == 1) "" else "s") +
-            if (prefs.volumeNotes) " · hold volume up to add one" else ""
         buttonSummary.text = if (prefs.buttonFollowsKeyboard) "Follows the keyboard · hold to talk"
         else "Stays where you put it · hold to move"
         historySummary.text = when (val d = prefs.historyDays) {

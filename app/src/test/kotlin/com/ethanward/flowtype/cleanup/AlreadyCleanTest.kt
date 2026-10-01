@@ -31,6 +31,17 @@ class AlreadyCleanTest {
     }
 
     @Test
+    fun aStrayYeahOrOkayBesideASentenceGoesToTheModel() {
+        // History, 2026-09-29: "Okay." on the end of a question skipped cleanup.
+        assertFalse(AlreadyClean.check("Would that delay getting the plumbing done? Okay.", AppStyle.MESSAGING))
+        assertFalse(AlreadyClean.check("Yeah. I'm leaving now.", AppStyle.MESSAGING))
+        assertFalse(AlreadyClean.check("Mm-hmm, see you there.", AppStyle.MESSAGING))
+        // Said as part of the sentence: typed as it is.
+        assertTrue(AlreadyClean.check("Okay, see you there.", AppStyle.MESSAGING))
+        assertTrue(AlreadyClean.check("Oh well, that's so true.", AppStyle.MESSAGING))
+    }
+
+    @Test
     fun searchAlwaysGetsCleanup() {
         assertFalse(AlreadyClean.check("Pharmacy hours Sunday.", AppStyle.SEARCH))
     }

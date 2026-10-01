@@ -30,7 +30,7 @@ data class HistoryEntry(
             j.optString("cleanup"), j.optString("outcome"), j.optLong("ms"),
         )
 
-        const val MAX = 50
+        const val MAX = 300
 
         /** The newest [MAX] entries younger than [days] days, oldest first. */
         fun prune(entries: List<HistoryEntry>, days: Int, now: Long): List<HistoryEntry> {

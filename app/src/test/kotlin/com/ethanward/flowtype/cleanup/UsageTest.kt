@@ -39,10 +39,4 @@ class UsageTest {
         assertEquals(16, s.month.calls)
         assertEquals(0.007, s.month.dollars, 1e-12)
     }
-
-    @Test
-    fun readsUsageFromAnAnswer() {
-        val r = JSONObject("""{"usage":{"input_tokens":120,"input_tokens_details":{"cached_tokens":0},"output_tokens":6}}""")
-        assertEquals(Usage(120, 0, 6), NoteTitler.usageOf(r))
-    }
 }

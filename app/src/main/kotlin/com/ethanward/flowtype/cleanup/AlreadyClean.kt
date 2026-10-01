@@ -14,7 +14,7 @@ object AlreadyClean {
     /** Words the model would drop, resolve, or turn into a mark or a figure. */
     private val CUES = setOf(
         // hesitations and hedges
-        "um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "hmm", "mm", "mhm", "like", "basically",
+        "um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "hmm", "mm", "mhm", "mm-hmm", "uh-huh", "like", "basically",
         // self-corrections
         "no", "sorry", "actually", "wait", "mean", "scratch", "rather", "correction",
         // numbers, amounts and times
@@ -29,6 +29,9 @@ object AlreadyClean {
 
     private val PHRASES = listOf("you know", "sort of", "kind of", "full stop")
 
+    /** What noise is heard as when it makes a sentence of its own ("…done? Okay."). */
+    private val STRAY = setOf("yeah", "okay", "ok", "oh", "yep")
+
     /** True when [text] can be typed as it is in a field of this [style]. */
     fun check(text: String, style: String): Boolean {
         // Search wants no final punctuation and no capital: the model's job.
@@ -40,7 +43,15 @@ object AlreadyClean {
         val lower = text.lowercase()
         if (PHRASES.any { Regex("\\b$it\\b").containsMatchIn(lower) }) return false
         if (words.zipWithNext().any { (a, b) -> a == b }) return false
+        if (strayEnd(text)) return false
         return true
+    }
+
+    /** A first or last sentence that is only "Yeah." or "Okay.", beside a real one: maybe noise, the model judges. */
+    private fun strayEnd(text: String): Boolean {
+        val sentences = text.split(Regex("(?<=[.?!])\\s+")).map { Guards.words(it) }.filter { it.isNotEmpty() }
+        if (sentences.size < 2) return false
+        return listOf(sentences.first(), sentences.last()).any { s -> s.all { it in STRAY } }
     }
 
     /**

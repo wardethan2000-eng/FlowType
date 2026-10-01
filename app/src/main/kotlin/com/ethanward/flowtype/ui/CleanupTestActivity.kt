@@ -7,10 +7,17 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.ethanward.flowtype.Prefs
 import com.ethanward.flowtype.cleanup.ApiKeyStore
+import com.ethanward.flowtype.cleanup.AppStyle
+import com.ethanward.flowtype.cleanup.Cleaner
 import com.ethanward.flowtype.cleanup.CleanupConfig
 import com.ethanward.flowtype.cleanup.CleanupPrompt
 import com.ethanward.flowtype.cleanup.CleanupTiming
+import com.ethanward.flowtype.cleanup.UsageStore
+import com.ethanward.flowtype.dictionary.DictionaryStore
+import com.ethanward.flowtype.history.HistoryStore
+import org.json.JSONObject
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -20,6 +27,11 @@ import kotlin.concurrent.thread
  *
  * Numbers append to `cleanup/results.jsonl` in the app's external files folder:
  * no key, no text.
+ *
+ * Replay history sends your saved dictations through today's prompt and model,
+ * to judge a prompt change on real speech. Its answers hold your text, so they
+ * go to `replay.jsonl` in the app's private storage (like the history itself),
+ * and only counts are shown.
  */
 class CleanupTestActivity : AppCompatActivity() {
     private lateinit var keys: ApiKeyStore
@@ -45,6 +57,9 @@ class CleanupTestActivity : AppCompatActivity() {
             runs = field("Requests per model (the first on a new connection)", "5", InputType.TYPE_CLASS_NUMBER)
             pause = field("Pause between requests, ms", "1500", InputType.TYPE_CLASS_NUMBER)
             button("Run timing") { run() }
+            heading("Replay history")
+            text("Cleans every saved dictation again with today's prompt and model (one request each, a fraction of a cent in all). Answers stay on the phone.", secondary = true)
+            button("Replay history", ButtonKind.OUTLINED) { replay() }
             output = mono()
         }
     }
@@ -83,6 +98,52 @@ class CleanupTestActivity : AppCompatActivity() {
                     log("last output: $last")
                 }
                 log("Done. Results: ${results.path}")
+            } catch (e: Throwable) {
+                log("Failed: ${e.javaClass.simpleName}")
+            } finally {
+                running = false
+                runOnUiThread { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+            }
+        }
+    }
+
+    private fun replay() {
+        if (running) return
+        if (!keys.has()) return log("Save a key first.")
+        val prefs = Prefs(this)
+        val entries = HistoryStore(this) { prefs.historyDays }.list().reversed()
+        val dict = DictionaryStore(this).load()
+        val words = dict.words + dict.replacements.map { it.to }.filter { t -> t.any(Char::isUpperCase) }
+        val config = CleanupConfig.byId(prefs.cleanupModel)
+        val out = File(filesDir, "replay.jsonl")
+        running = true
+        output.text = ""
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        thread(name = "flowtype-cleanup-replay") {
+            try {
+                val cleaner = Cleaner(keys, UsageStore(this@CleanupTestActivity))
+                val lines = StringBuilder()
+                val outcomes = LinkedHashMap<String, Int>()
+                log("== ${entries.size} dictations, ${config.label}, prompt v${CleanupPrompt.VERSION}")
+                for ((i, e) in entries.withIndex()) {
+                    // History has no field type: the app's style, as a plain text field.
+                    val style = AppStyle.forField(e.app, android.text.InputType.TYPE_CLASS_TEXT, 0) ?: AppStyle.GENERAL
+                    val r = cleaner.clean(e.raw, style, words, config, 15_000)
+                    val (outcome, text, ms) = when (r) {
+                        is Cleaner.Result.Cleaned -> Triple("cleaned", r.text, r.totalMs)
+                        is Cleaner.Result.Fallback -> Triple(r.reason.name, null, r.totalMs)
+                    }
+                    outcomes.merge(outcome, 1, Int::plus)
+                    lines.append(
+                        JSONObject().put("at", e.at).put("app", e.app).put("style", style).put("raw", e.raw)
+                            .put("before", e.typed).put("beforeOutcome", e.cleanup)
+                            .put("after", text ?: JSONObject.NULL).put("afterOutcome", outcome).put("ms", ms)
+                            .put("promptVersion", CleanupPrompt.VERSION).toString(),
+                    ).append('\n')
+                    log("#$i $outcome ${ms} ms")
+                }
+                out.writeText(lines.toString())
+                log("Done: " + outcomes.entries.joinToString { "${it.key} ${it.value}" })
             } catch (e: Throwable) {
                 log("Failed: ${e.javaClass.simpleName}")
             } finally {

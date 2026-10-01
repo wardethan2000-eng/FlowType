@@ -2,21 +2,18 @@ package com.ethanward.flowtype.service
 
 import android.Manifest
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.InputMethod
 import android.content.ClipboardManager
 import android.content.ComponentCallbacks2
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.PixelFormat
-import android.media.AudioManager
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
-import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -43,7 +40,6 @@ import com.ethanward.flowtype.cleanup.ApiKeyStore
 import com.ethanward.flowtype.cleanup.AppStyle
 import com.ethanward.flowtype.cleanup.Cleaner
 import com.ethanward.flowtype.cleanup.CleanupConfig
-import com.ethanward.flowtype.cleanup.NoteTitler
 import com.ethanward.flowtype.cleanup.UsageStore
 import com.ethanward.flowtype.dictionary.Corrections
 import com.ethanward.flowtype.dictionary.DictionaryPass
@@ -55,8 +51,6 @@ import com.ethanward.flowtype.insert.InsertionLog
 import com.ethanward.flowtype.insert.InsertionRecord
 import com.ethanward.flowtype.insert.InsertionRules
 import com.ethanward.flowtype.insert.Outcome
-import com.ethanward.flowtype.notes.NotesStore
-import com.ethanward.flowtype.notes.VolumeHold
 import com.ethanward.flowtype.overlay.ButtonPlacement
 import com.ethanward.flowtype.overlay.MicButton
 import java.util.concurrent.Executors
@@ -84,8 +78,6 @@ class DictationService : AccessibilityService() {
     private lateinit var keys: ApiKeyStore
     private lateinit var cleaner: Cleaner
     private lateinit var otherAudio: OtherAudio
-    private lateinit var notes: NotesStore
-    private val titler by lazy { NoteTitler(keys, UsageStore(this)) }
     private val net = Executors.newSingleThreadExecutor { Thread(it, "flowtype-cleanup") }
     private lateinit var windowManager: WindowManager
 
@@ -127,7 +119,6 @@ class DictationService : AccessibilityService() {
         keys = ApiKeyStore(this)
         cleaner = Cleaner(keys, UsageStore(this))
         otherAudio = OtherAudio(this)
-        notes = NotesStore(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         instance = this
         Trace.event("service_connected")
@@ -159,191 +150,6 @@ class DictationService : AccessibilityService() {
         }
     }
 
-    // ---- Voice notes: hold volume up (PLAN §4.11) ----
-
-    private val volumeHold = VolumeHold()
-    /** Key-ups to swallow: the press that saved a note. */
-    private var swallowVolumeUp = false
-    private var noteCapture: AudioCapture? = null
-    private var noteOverlay: MicButton? = null
-    private val holdTimer = Runnable {
-        if (volumeHold.onTimer(SystemClock.uptimeMillis())) {
-            if (!startNote()) {
-                // Couldn't start (no mic permission, no model…): behave like a tap after all.
-                raiseVolume()
-            }
-        }
-    }
-
-    /** Whether Android is sending us key events (needs the service switched on since the update). */
-    val filtersKeys: Boolean
-        get() = serviceInfo?.let {
-            it.flags and AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS != 0 &&
-                it.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_REQUEST_FILTER_KEY_EVENTS != 0
-        } == true
-
-    /**
-     * Volume up: hold ~0.6 s to take a note; a tap still raises the volume
-     * (applied on release). During a note, a press saves it. In a call, or
-     * with notes off, keys pass straight through untouched.
-     */
-    override fun onKeyEvent(event: KeyEvent): Boolean {
-        if (event.keyCode != KeyEvent.KEYCODE_VOLUME_UP || !prefs.volumeNotes) return false
-        val audio = getSystemService(AudioManager::class.java)
-        if (audio.mode != AudioManager.MODE_NORMAL && noteCapture == null) return false
-        when (event.action) {
-            KeyEvent.ACTION_DOWN -> {
-                if (event.repeatCount > 0) return true
-                if (noteCapture != null) {
-                    swallowVolumeUp = true
-                    main.post { finishNote() }
-                    return true
-                }
-                volumeHold.onDown(event.eventTime)
-                main.removeCallbacks(holdTimer)
-                main.postDelayed(holdTimer, volumeHold.holdMs)
-                return true
-            }
-            KeyEvent.ACTION_UP -> {
-                if (swallowVolumeUp) {
-                    swallowVolumeUp = false
-                    return true
-                }
-                main.removeCallbacks(holdTimer)
-                if (volumeHold.onUp()) main.post { raiseVolume() }
-                return true
-            }
-        }
-        return false
-    }
-
-    /** The tap we held back: one step up on whatever the volume keys control now, with the usual slider. */
-    private fun raiseVolume() {
-        getSystemService(AudioManager::class.java).adjustSuggestedStreamVolume(
-            AudioManager.ADJUST_RAISE, AudioManager.USE_DEFAULT_STREAM_TYPE, AudioManager.FLAG_SHOW_UI,
-        )
-    }
-
-    /** Starts a voice note: listen with a floating ✕/✓ panel, no text field needed. True if listening. */
-    fun startNote(): Boolean {
-        if (noteCapture != null || noteOverlay != null || capture != null) return false
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            toast("Open Flowtype and allow the microphone")
-            return false
-        }
-        val model = AsrModels.byId(prefs.modelId) ?: AsrModels.DEFAULT
-        if (!store.isInstalled(model)) {
-            toast("Download a speech model in Flowtype first")
-            return false
-        }
-        if (prefs.pauseOtherAudio) otherAudio.pause()
-        val overlay = MicButton(this).apply {
-            setState(MicButton.State.RECORDING)
-            onCancel = { cancelNote() }
-            onAccept = { finishNote() }
-        }
-        val density = resources.displayMetrics.density
-        val bounds = windowManager.currentWindowMetrics.bounds
-        val p = WindowManager.LayoutParams(
-            (MicButton.PANEL_WINDOW_DP * density).toInt(), (MicButton.WINDOW_DP * density).toInt(),
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = (bounds.height() * 0.72).toInt()
-        }
-        val cap = AudioCapture(onLevel = { level -> main.post { noteOverlay?.setLevel(level) } })
-        if (!cap.start()) {
-            otherAudio.resume()
-            toast("Couldn't open the microphone")
-            return false
-        }
-        val shown = runCatching { windowManager.addView(overlay, p) }
-        if (shown.isFailure) {
-            cap.stop()
-            otherAudio.resume()
-            Trace.warn("note_overlay_failed", "error" to shown.exceptionOrNull()?.javaClass?.simpleName)
-            toast("Couldn't show the note panel")
-            return false
-        }
-        noteOverlay = overlay
-        noteCapture = cap
-        overlay.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-        toast("Taking a note. Press volume up or tap ✓ when you're done.")
-        preloadModel(warm = true)
-        Trace.event("note_started")
-        return true
-    }
-
-    private fun cancelNote() {
-        val cap = noteCapture ?: return
-        noteCapture = null
-        cap.stop()
-        otherAudio.resume()
-        removeNoteOverlay()
-        Trace.event("note_cancelled")
-    }
-
-    private fun removeNoteOverlay() {
-        noteOverlay?.let { runCatching { windowManager.removeView(it) } }
-        noteOverlay = null
-    }
-
-    /** Transcribes, cleans up in the "notes" style when cleanup is on, and saves. */
-    private fun finishNote() {
-        val cap = noteCapture ?: return
-        noteCapture = null
-        val pcm = cap.stop()
-        otherAudio.resume()
-        // Under a second isn't a note, it's a slip of the thumb: don't save or title it.
-        if (pcm.size < MIN_NOTE_SAMPLES) {
-            removeNoteOverlay()
-            Trace.event("note_too_short", "audioMs" to pcm.size / 16)
-            toast("Too short, so no note was saved")
-            return
-        }
-        noteOverlay?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-        noteOverlay?.setState(MicButton.State.BUSY)
-        asr.execute {
-            val dict = dictionary.load()
-            val pass = DictionaryPass(dict, prefs.soundsLike)
-            val local = runCatching {
-                pass.apply(SpokenCommands.apply(loadModel().first.decode(Wav.toFloats(pcm)))).text
-            }.getOrElse { "" }
-            if (local.isBlank()) {
-                main.post {
-                    removeNoteOverlay()
-                    toast("Didn't catch that, so no note was saved")
-                }
-                return@execute
-            }
-            val save = { marked: String, cleanup: String ->
-                val text = pass.expand(marked)
-                // Saved at once with its first words as the title; the AI title follows.
-                val note = notes.add(text, pass.expand(local), NoteTitler.fallback(text))
-                Trace.event("note_saved", "audioMs" to pcm.size / 16, "chars" to text.length, "cleanup" to cleanup)
-                main.post {
-                    removeNoteOverlay()
-                    toast("Note saved in Flowtype")
-                }
-                if (prefs.cleanupEnabled && keys.has()) net.execute {
-                    val title = titler.title(text, CleanupConfig.byId(prefs.cleanupModel))
-                    if (title != null) notes.setTitle(note.id, title)
-                    Trace.event("note_titled", "ai" to (title != null), "chars" to (title?.length ?: 0))
-                }
-            }
-            if (prefs.cleanupEnabled && keys.has()) {
-                net.execute {
-                    val words = dict.words + dict.replacements.map { it.to }.filter { t -> t.any(Char::isUpperCase) }
-                    val (text, outcome) = cleanup(local, AppStyle.NOTES, pass, words, null)
-                    save(text, outcome)
-                }
-            } else save(local, "off")
-        }
-    }
-
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOWS_CHANGED,
@@ -354,6 +160,11 @@ class DictationService : AccessibilityService() {
                 main.postDelayed(refreshKeyboard, 50)
                 // Auto-learn: read the field soon after each change; offer once it settles.
                 if (learnWatch != null && event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+                    // Which edits reach the watch, as counts: auto-learn saw none of a fix in Messages.
+                    Trace.event(
+                        "learn_edit", "app" to event.packageName, "from" to event.fromIndex,
+                        "added" to event.addedCount, "removed" to event.removedCount,
+                    )
                     main.removeCallbacks(offerLearn)
                     main.removeCallbacks(checkCorrection)
                     main.postDelayed(checkCorrection, LEARN_READ_MS)
@@ -776,7 +587,8 @@ class DictationService : AccessibilityService() {
             is Cleaner.Result.Fallback -> {
                 Trace.event(
                     "cleanup", "outcome" to result.reason, "model" to config.id, "style" to style,
-                    "totalMs" to result.totalMs, "http" to result.http, "charsIn" to local.length,
+                    "totalMs" to result.totalMs, "firstTokenMs" to result.firstTokenMs, "http" to result.http,
+                    "charsIn" to local.length,
                 )
                 if (result.reason.keyProblem) {
                     val first = prefs.keyProblem != result.reason.name
@@ -1048,7 +860,6 @@ class DictationService : AccessibilityService() {
 
     override fun onDestroy() {
         instance = null
-        cancelNote()
         if (capture != null) otherAudio.resume()
         capture?.stop()
         capture = null
@@ -1069,7 +880,6 @@ class DictationService : AccessibilityService() {
         private const val HOLD_TO_DRAG_MS = 300L
         private const val HOLD_TO_TALK_MS = 350L
         private const val CANCEL_SLIDE_DP = 100
-        private const val MIN_NOTE_SAMPLES = 16_000 // 1 s
         private const val WARM_UP_SAMPLES = 8_000 // 0.5 s
         /** A text box whose bottom is this close to the keyboard counts as sitting on it. */
         private const val NEAR_KEYBOARD_DP = 120

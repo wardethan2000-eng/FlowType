@@ -14,15 +14,9 @@ collects nothing.
 - **The accessibility service** is used to show the mic button while you type
   and to insert your dictation at the cursor. Flowtype doesn't read, store or log
   the text in your fields, and it never runs in password fields.
-- **History**: your last 50 dictations are kept on the phone, in the app's
+- **History**: your last 300 dictations are kept on the phone, in the app's
   private storage, for 7 days by default (1 or 30 days, or off, in History).
   They're never uploaded, backed up or logged, and "Delete all" removes them.
-- **Notes** you dictate (hold volume up) are kept on the phone, in the
-  app's private storage, until you delete them. "Send to Keep" hands one note
-  to Google Keep only when you tap it.
-- **Volume keys**: the service looks only at volume up, to tell a hold (start
-  a note) from a tap (change the volume). Every other key passes straight
-  through.
 - **Logs** hold timings, lengths and app names only, never what you said.
 - Speech models are downloaded from sherpa-onnx's releases on GitHub.
 

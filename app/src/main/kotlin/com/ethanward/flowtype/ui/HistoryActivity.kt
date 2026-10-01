@@ -19,7 +19,7 @@ import com.ethanward.flowtype.history.HistoryEntry
 import com.ethanward.flowtype.history.HistoryStore
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
-/** The last 50 dictations, searchable, kept on the phone for a chosen time (PLAN §4.7). */
+/** The last 300 dictations, searchable, kept on the phone for a chosen time (PLAN §4.7). */
 class HistoryActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
     private lateinit var store: HistoryStore

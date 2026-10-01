@@ -26,8 +26,14 @@ class CleanerTest {
     @Test
     fun wrappingQuotesAreDropped() {
         assertEquals("See you at 4.", Cleaner.tidy("  \"See you at 4.\" ", "see you at four"))
-        assertEquals("“Quoted” on purpose", Cleaner.tidy("“Quoted” on purpose", "quote quoted unquote on purpose"))
+        assertEquals("\"Quoted\" on purpose", Cleaner.tidy("“Quoted” on purpose", "quote quoted unquote on purpose"))
         assertEquals("\"Hi\"", Cleaner.tidy("\"Hi\"", "\"hi\""))
+    }
+
+    @Test
+    fun curlyApostrophesAndQuotesAreStraightened() {
+        assertEquals("We'll be there, I'm sure", Cleaner.tidy("We’ll be there, I’m sure", "we will be there I'm sure"))
+        assertEquals("He said \"no\" twice", Cleaner.tidy("He said “no” twice", "he said quote no unquote twice"))
     }
 
     @Test

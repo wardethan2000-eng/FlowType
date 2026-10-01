@@ -323,7 +323,7 @@ dictionary?"*. Never add silently.
   counts only for a capital mid-sentence. Dictations under 3 words are skipped.
 
 Snippets built 2026-09-27 as above: tokens `⟦S1⟧`, prompt rule 13, a guard
-that rejects a dropped or repeated token, expanded last (dictations and notes).
+that rejects a dropped or repeated token, expanded last.
 
 Storage: one JSON file in the app's private storage, the same format as
 import/export. At a few hundred entries a database adds build weight for no gain.
@@ -393,7 +393,8 @@ quality anyway. A cache hit costs a tenth as much, and is usually quicker.
 
 - Connection is pre-opened at record start (a small request on the same OkHttp
   client, so HTTP/2 and TLS are already up).
-- Cleanup deadline: **1.8 s** after the request is sent (setting). If missed,
+- Cleanup deadline: **3 s** after the request is sent (setting; 1.8 s until
+  2026-10-01, when a quarter of real dictations ran out at 1.8 s). If missed,
   insert the local text immediately. Its punctuation comes from Parakeet plus a
   small rule-based pass for spoken commands.
 - **Very short utterances** (≤ 3 words, e.g. "sounds good", "on my way") skip
@@ -403,6 +404,15 @@ quality anyway. A cache hit costs a tenth as much, and is usually quicker.
   notification opens the key screen. Out of credit or rate-limited (HTTP 429) →
   local text, with a once-a-day notice. Dictation never stops working because of
   the key.
+- **Prompt v6 (2026-10-01)**, tuned on 50 real dictations with Developer tools →
+  Cleanup timing → Replay history (answers stay in the app's private storage).
+  v3 contracted ("we will" → "we'll"), dropped words ("said that we"), used
+  curly apostrophes, and missed noise heard as a stray "Okay." or "Mm-hmm.".
+  v6: change as few words as possible apart from the listed fixes; drop stray
+  noise words at the start or end; fix an obviously misheard small word
+  ("tests and the Drive" → "in the Drive"); join sentences split mid-way.
+  Curly quotes are straightened in code. A short dictation with a stray
+  "Okay."/"Yeah." sentence no longer skips the model.
 
 ### 4.6 Inserting text (the part that must never go wrong)
 
@@ -465,8 +475,9 @@ quality anyway. A cache hit costs a tenth as much, and is usually quicker.
 
 ### 4.7 History, undo and retry
 
-- The last 50 dictations are stored on the phone (raw text, cleaned text, app,
-  timing). They are viewable and searchable, and auto-delete after 7 days
+- The last 300 dictations are stored on the phone (raw text, cleaned text,
+  app, timing); 50 until 2026-10-01, which held only ~3 days, too few to
+  review a week. They are viewable and searchable, and auto-delete after 7 days
   (setting).
 - **Undo cleanup**: for 6 s after a cleaned-up dictation, an "Undo cleanup"
   chip beside the button replaces it with the phone's own text. (Long-press
@@ -558,31 +569,12 @@ share and nobody else's usage lands on your bill.
   with Obtainium.
 - Release signing key stays off the repo and off the laptop's git history.
 
-### 4.11 Voice notes (added 2026-09-26)
+### 4.11 Voice notes (added 2026-09-26, removed 2026-10-01)
 
-- **Trigger**: hold volume up for ~0.6 s, anywhere, screen on (lock screen
-  included; Android sends no keys to accessibility services with the screen
-  off). Every press is held back on key-down; released sooner it was a tap
-  and the volume goes up one step on release. Holding to sweep the volume up
-  no longer works while notes are on; tapping does. Calls are never touched.
-  Volume up again, or ✓, saves; ✕ discards. Also a "Take a note now" button.
-  (The first version used a double press, 2026-09-26; quick taps to raise the
-  volume looked the same, so every second tap was eaten and the volume
-  couldn't be turned up. Replaced the same day.)
-- A floating ✕/waveform/✓ panel, since there's no text field. Same pipeline:
-  on-phone transcription, spoken commands, dictionary, cleanup in the "notes"
-  style when it's on, other audio paused.
-- **Notes screen**: newest first, search, copy, delete. Kept until deleted.
-- **Titles**: each note is saved at once with its first words as a title,
-  then the cleanup model writes a 2–6 word title (one small request,
-  `store: false`, guarded; no key or anything odd keeps the first words).
-  Send to Keep passes it as the Keep note's title.
-- **Google Keep**: Keep's API covers Workspace accounts only, so nothing can
-  write to a personal Keep silently. Each note has **Send to Keep**, which
-  opens Keep's own share card filled in; one tap saves it (Ethan's choice
-  over opening Keep after every note).
-- Needs `canRequestFilterKeyEvents`; the Notes screen says so if Android
-  isn't passing keys yet (turn the service off and on).
+Hold volume up to dictate a note, with a Notes screen, AI titles and Send to
+Keep. Removed at Ethan's request: there was no good way to start one (a held
+volume key also took away holding to sweep the volume), and it went unused.
+The service no longer filters key events.
 
 ---
 
@@ -700,8 +692,8 @@ the phone):
 
 - Modules: `service/`, `overlay/`, `audio/`, `asr/`, `dictionary/`,
   `cleanup/`, `insert/`, and `ui/` for every screen (no separate `settings/`).
-- Cleanup: streamed, guards with early abort on the first 3 words, 1.8 s
-  deadline (1.2/1.8/2.5 s setting), connection pre-opened at record start
+- Cleanup: streamed, guards with early abort on the first 3 words, 3 s
+  deadline (1.8/3/5 s setting), connection pre-opened at record start
   with a keyless HEAD, ≤ 3 content words skipped, no cleanup in URL, email,
   number or password fields, per-app style from the package and the
   keyboard's Search action (so part of Phase 2's per-app styles is in).

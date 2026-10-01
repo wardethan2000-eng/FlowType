@@ -57,9 +57,13 @@ class Prefs(context: Context) {
         get() = prefs.getString("cleanup_model", null) ?: CleanupConfig.DEFAULT.id
         set(value) = prefs.edit().putString("cleanup_model", value).apply()
 
-    /** How long to wait for cleanup before typing the local text (PLAN §4.5). */
+    /**
+     * How long to wait for cleanup before typing the local text (PLAN §4.5).
+     * 3 s since 2026-10-01: at 1.8 s, 13 of 50 real dictations ran out and went
+     * in uncleaned, all of Messages' since the evening of 09-29.
+     */
     var cleanupDeadlineMs: Long
-        get() = prefs.getLong("cleanup_deadline_ms", 1800)
+        get() = prefs.getLong("cleanup_deadline_ms", 3000)
         set(value) = prefs.edit().putLong("cleanup_deadline_ms", value).apply()
 
     /** The last key problem (a Cleaner.Reason name), shown on the home screen; null when fine. */
@@ -103,9 +107,4 @@ class Prefs(context: Context) {
     var pauseOtherAudio: Boolean
         get() = prefs.getBoolean("pause_other_audio", true)
         set(value) = prefs.edit().putBoolean("pause_other_audio", value).apply()
-
-    /** Hold volume up to dictate a note (a tap still changes the volume). */
-    var volumeNotes: Boolean
-        get() = prefs.getBoolean("volume_notes", true)
-        set(value) = prefs.edit().putBoolean("volume_notes", value).apply()
 }

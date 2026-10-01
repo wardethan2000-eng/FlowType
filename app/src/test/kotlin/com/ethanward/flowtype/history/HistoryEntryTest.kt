@@ -17,9 +17,9 @@ class HistoryEntryTest {
     }
 
     @Test
-    fun keepsTheNewestFifty() {
-        val kept = HistoryEntry.prune((1..60).map { e(now - it * 1000L) }, days = 7, now = now)
-        assertEquals(50, kept.size)
+    fun keepsTheNewestMax() {
+        val kept = HistoryEntry.prune((1..HistoryEntry.MAX + 10).map { e(now - it * 1000L) }, days = 7, now = now)
+        assertEquals(HistoryEntry.MAX, kept.size)
         assertEquals(now - 1000L, kept.last().at)
     }
 

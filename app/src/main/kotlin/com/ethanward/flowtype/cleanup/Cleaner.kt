@@ -33,7 +33,8 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
 
     sealed interface Result {
         data class Cleaned(val text: String, val firstTokenMs: Long, val totalMs: Long, val cachedTokens: Int, val inputTokens: Int) : Result
-        data class Fallback(val reason: Reason, val totalMs: Long = 0, val http: Int = 0) : Result
+        /** [firstTokenMs]: when the answer started arriving, -1 if it never did (tells a slow start from a slow stream). */
+        data class Fallback(val reason: Reason, val totalMs: Long = 0, val http: Int = 0, val firstTokenMs: Long = -1) : Result
     }
 
     private val client = OkHttpClient.Builder()
@@ -156,14 +157,14 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
             }
         } catch (e: InterruptedIOException) {
             billed = true // OpenAI may finish, and bill, a request we stopped waiting for
-            return Result.Fallback(Reason.DEADLINE, ms())
+            return Result.Fallback(Reason.DEADLINE, ms(), firstTokenMs = firstTokenMs)
         } catch (e: UnknownHostException) {
             return Result.Fallback(Reason.OFFLINE, ms())
         } catch (e: ConnectException) {
             return Result.Fallback(Reason.OFFLINE, ms())
         } catch (e: IOException) {
             Trace.warn("cleanup_io", "error" to e.javaClass.simpleName)
-            return Result.Fallback(if (call.isCanceled()) Reason.DEADLINE else Reason.ERROR, ms())
+            return Result.Fallback(if (call.isCanceled()) Reason.DEADLINE else Reason.ERROR, ms(), firstTokenMs = firstTokenMs)
         } finally {
             if (billed) record(config, streamed, body.toString())
         }
@@ -217,12 +218,16 @@ class Cleaner(private val keys: ApiKeyStore, private val usage: UsageStore? = nu
                 error.optString("message").contains("prompt_cache_retention")
         }
 
-        /** Trims the answer, and drops quotes it wrapped around the whole thing. */
+        /**
+         * Trims the answer, drops quotes it wrapped around the whole thing, and
+         * straightens its curly quotes and apostrophes: the phone's text and the
+         * keyboard use straight ones, and "We’ll" beside "I'm" looks wrong.
+         */
         fun tidy(output: String, input: String): String {
             var t = output.trim()
             val quoted = t.length >= 2 && ((t.first() == '"' && t.last() == '"') || (t.first() == '“' && t.last() == '”'))
             if (quoted && !input.trim().startsWith("\"")) t = t.substring(1, t.length - 1).trim()
-            return t
+            return t.replace('’', '\'').replace('‘', '\'').replace('“', '"').replace('”', '"')
         }
     }
 }
