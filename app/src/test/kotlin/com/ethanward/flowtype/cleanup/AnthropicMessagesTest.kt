@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
 class AnthropicMessagesTest {
     private val server = MockWebServer().apply { start() }
     private val provider = AnthropicMessages(server.url("/").toString())
-    private val haiku = CleanupCall("test-key", CleanupConfig.DEFAULT.copy(model = "claude-haiku-4-5"), "um see you at the cafe", listOf("DecalForge"), "messaging", "We met on")
+    private val haiku = CleanupCall("test-key", CleanupConfig.DEFAULT.copy(model = "claude-haiku-5-5"), "um see you at the cafe", listOf("DecalForge"), "messaging", "We met on")
 
     @After
     fun stop() = server.shutdown()
@@ -58,9 +58,15 @@ class AnthropicMessagesTest {
     @Test
     fun eachModelGetsTheParametersItAccepts() {
         val h = AnthropicMessages.body(haiku)
-        assertEquals(0, h.getInt("temperature"))
-        assertFalse(h.has("thinking"))
-        assertFalse(h.has("output_config"))
+        assertFalse(h.has("temperature"))
+        assertEquals("disabled", h.getJSONObject("thinking").getString("type"))
+        assertEquals("low", h.getJSONObject("output_config").getString("effort"))
+        assertTrue(h.getInt("max_tokens") < 2_048)
+
+        val old = AnthropicMessages.body(haiku.copy(config = haiku.config.copy(model = "claude-haiku-4-5")))
+        assertEquals(0, old.getInt("temperature"))
+        assertFalse(old.has("thinking"))
+        assertFalse(old.has("output_config"))
 
         val s = AnthropicMessages.body(haiku.copy(config = haiku.config.copy(model = "claude-sonnet-5-5")))
         assertFalse(s.has("temperature"))

@@ -24,7 +24,7 @@ class CleanupSetup(
 
     fun provider(): CleanupProvider = Providers.provider(preset, baseUrl ?: preset.baseUrl.orEmpty())
 
-    /** "Luna, fast tier", "claude-haiku-4-5": for summaries. */
+    /** "Luna, fast tier", "claude-haiku-5-5": for summaries. */
     val modelLabel: String get() = config.label
 
     companion object {

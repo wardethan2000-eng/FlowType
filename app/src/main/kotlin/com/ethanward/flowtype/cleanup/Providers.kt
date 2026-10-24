@@ -33,9 +33,9 @@ object Providers {
         blurb = "Luna on the fast tier: the quickest and cheapest we've measured.",
     )
     val ANTHROPIC = ProviderPreset(
-        "anthropic", "Anthropic (Claude)", Protocol.ANTHROPIC, AnthropicMessages.URL, "claude-haiku-4-5",
+        "anthropic", "Anthropic (Claude)", Protocol.ANTHROPIC, AnthropicMessages.URL, AnthropicMessages.HAIKU_5_5,
         "https://console.anthropic.com/settings/keys", "sk-ant-",
-        blurb = "Claude. Haiku costs about ten times what Luna does; Sonnet more.",
+        blurb = "Claude. Haiku costs about what Luna does; Sonnet more.",
     )
     val GEMINI = ProviderPreset(
         "gemini", "Google Gemini", Protocol.CHAT_COMPLETIONS, "https://generativelanguage.googleapis.com/v1beta/openai", null,

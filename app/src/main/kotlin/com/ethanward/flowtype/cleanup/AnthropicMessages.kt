@@ -18,9 +18,10 @@ import java.util.concurrent.TimeUnit
 /**
  * Anthropic's Messages API over plain HTTP (LAUNCH §A1; Ethan, 2026-10-01:
  * the official Java SDK grew the app from 48 to 74 MB). The rules go in the
- * system prompt with a one-hour cache marker. Claude Sonnet 5.5 caches from
- * 512 tokens; Claude Haiku 4.5 only from 4,096, which our ~1,500-token
- * prompt doesn't reach, so every Haiku call pays the full input price.
+ * system prompt with a one-hour cache marker. Claude Haiku 5.5 and Sonnet 5.5
+ * cache from 512 tokens; Claude Haiku 4.5 only from 4,096, which our
+ * ~1,500-token prompt doesn't reach, so a Haiku 4.5 call pays the full input
+ * price.
  */
 class AnthropicMessages(baseUrl: String = URL) : CleanupProvider {
     private val base = baseUrl.trimEnd('/')
@@ -114,6 +115,9 @@ class AnthropicMessages(baseUrl: String = URL) : CleanupProvider {
         /**
          * The request. What each model accepts differs:
          * - Haiku 4.5 thinks only when asked and takes a temperature: 0.
+         * - Haiku 5.5 refuses a temperature and thinks by default; thinking is
+         *   turned off with `disabled` (accepted at effort high or below),
+         *   and effort is low.
          * - Sonnet 5.5 refuses a temperature and thinks by default; thinking
          *   is turned off with `between_tools` (accepted at effort high or
          *   below), and effort is low.
@@ -122,10 +126,10 @@ class AnthropicMessages(baseUrl: String = URL) : CleanupProvider {
          */
         fun body(call: CleanupCall): JSONObject = JSONObject().apply {
             val model = call.config.model
-            val haiku = model.startsWith("claude-haiku")
+            val oldHaiku = model.startsWith("claude-haiku-4")
             val answer = CleanupPrompt.maxOutputTokens(call.transcript)
             put("model", model)
-            put("max_tokens", if (haiku || model == SONNET_5_5) answer else maxOf(answer, 2_048))
+            put("max_tokens", if (oldHaiku || model == HAIKU_5_5 || model == SONNET_5_5) answer else maxOf(answer, 2_048))
             put("stream", true)
             put(
                 "system",
@@ -146,7 +150,11 @@ class AnthropicMessages(baseUrl: String = URL) : CleanupProvider {
                 ),
             )
             when {
-                haiku -> put("temperature", 0)
+                oldHaiku -> put("temperature", 0)
+                model == HAIKU_5_5 -> {
+                    put("thinking", JSONObject().put("type", "disabled"))
+                    put("output_config", JSONObject().put("effort", "low"))
+                }
                 model == SONNET_5_5 -> {
                     put("thinking", JSONObject().put("type", "between_tools"))
                     put("output_config", JSONObject().put("effort", "low"))
@@ -155,6 +163,7 @@ class AnthropicMessages(baseUrl: String = URL) : CleanupProvider {
             }
         }
 
+        const val HAIKU_5_5 = "claude-haiku-5-5"
         const val SONNET_5_5 = "claude-sonnet-5-5"
 
         /**

@@ -26,6 +26,8 @@ object Prices {
         "gpt-6-luna" to Rate(0.10, 0.01, 0.50),
         "gpt-4.1-nano" to Rate(0.10, 0.025, 0.40),
         "claude-haiku-4-5" to Rate(1.00, 0.10, 5.00),
+        // 2026-10-24: up to a 100K-token prompt; ours never comes near it.
+        "claude-haiku-5-5" to Rate(0.10, 0.01, 0.50),
         "claude-sonnet-5-5" to Rate(2.00, 0.20, 10.00),
     )
 
