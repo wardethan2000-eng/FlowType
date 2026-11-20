@@ -29,6 +29,7 @@ import com.ethanward.flowtype.asr.AsrModels
 import com.ethanward.flowtype.asr.LiveChunker
 import com.ethanward.flowtype.asr.SpokenCommands
 import com.ethanward.flowtype.asr.joinPieces
+import com.ethanward.flowtype.asr.dropGluedOkay
 import com.ethanward.flowtype.asr.ModelStore
 import com.ethanward.flowtype.asr.Transcriber
 import com.ethanward.flowtype.audio.AudioCapture
@@ -550,7 +551,7 @@ class DictationService : AccessibilityService() {
                 val started = SystemClock.elapsedRealtime()
                 // Live: only the unfinished tail is left to decode. Otherwise the whole thing.
                 val chunked = live?.let { c -> runCatching { c.finish() }.also { c.release() }.getOrNull() }
-                val heard = chunked?.let { joinPieces(it.pieces, keepCase = dict.words.toSet()) } ?: t.decode(samples)
+                val heard = dropGluedOkay(chunked?.let { joinPieces(it.pieces, keepCase = dict.words.toSet()) } ?: t.decode(samples))
                 if (chunked != null && live != null) {
                     // Diagnosis of live chunking: where each piece is and how much text it gave;
                     // whether the chunker got every captured sample. Numbers only.
