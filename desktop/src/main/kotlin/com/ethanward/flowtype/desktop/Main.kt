@@ -33,11 +33,15 @@ fun main(args: Array<String>) {
     val settings = Settings.load(File(dir, "desktop.json"))
     val raw = System.`in`.readBytes().toString(Charsets.UTF_8).trim()
     val noAi = "--no-ai" in args || !settings.cleanup
-    val out = runCatching {
-        Desktop(settings, Desktop.loadDictionary(File(dir, "dictionary.json"))) { id -> if (noAi) null else Desktop.key(id) }.run(raw)
-    }.getOrElse {
+    val started = System.currentTimeMillis()
+    val desktop = Desktop(settings, Desktop.loadDictionary(File(dir, "dictionary.json"))) { id -> if (noAi) null else Desktop.key(id) }
+    val out = runCatching { desktop.run(raw) }.getOrElse {
         Trace.warn("desktop_failed", "error" to it.javaClass.simpleName)
+        desktop.outcome = "error"
         raw
+    }
+    if (settings.history && raw.isNotEmpty()) {
+        History.append(History.file(), raw, desktop.local, out, desktop.outcome, System.currentTimeMillis() - started)
     }
     // No newline: voxtype types every character, and a newline is Enter.
     print(out)
@@ -58,6 +62,8 @@ data class Settings(
     val soundsLike: Boolean = true,
     /** False: the local pass only, no AI call. */
     val cleanup: Boolean = true,
+    /** Keep what was heard and typed in ~/.local/state/flowtype/history.jsonl, as the phone does. */
+    val history: Boolean = true,
 ) {
     companion object {
         fun load(file: File): Settings {
@@ -78,6 +84,7 @@ data class Settings(
                 deadlineMs = j.optLong("deadlineMs", d.deadlineMs),
                 soundsLike = j.optBoolean("soundsLike", d.soundsLike),
                 cleanup = j.optBoolean("cleanup", d.cleanup),
+                history = j.optBoolean("history", d.history),
             )
         }
     }
@@ -90,10 +97,15 @@ class Desktop(
     /** The key for a provider id, or null for none. */
     private val key: (String) -> String?,
 ) {
+    /** After [run]: the text before cleanup, and what cleanup did ("cleaned", a fallback reason, "off"). */
+    var local: String = ""
+    var outcome: String = "off"
+
     fun run(raw: String): String {
         val started = System.nanoTime()
         val pass = DictionaryPass(dictionary, settings.soundsLike)
         val local = pass.apply(SpokenCommands.apply(dropGluedOkay(raw))).text
+        this.local = local
         if (local.isBlank()) return pass.expand(local)
 
         val preset = Providers.byId(settings.provider)
@@ -109,6 +121,10 @@ class Desktop(
         val words = dictionary.words + dictionary.replacements.map { it.to }.filter { t -> t.any(Char::isUpperCase) }
         val result = Cleaner({ k }, null, Providers.provider(preset, baseUrl))
             .clean(local, style, words, config, settings.deadlineMs, null)
+        outcome = when (result) {
+            is Cleaner.Result.Cleaned -> "cleaned"
+            is Cleaner.Result.Fallback -> result.reason.name
+        }
         val text = when (result) {
             is Cleaner.Result.Cleaned -> {
                 Trace.event(
@@ -158,5 +174,34 @@ class Desktop(
                 p.inputStream.readBytes().toString(Charsets.UTF_8).trim().takeIf { p.exitValue() == 0 && it.isNotEmpty() }
             }.getOrNull()
         }
+    }
+}
+
+/**
+ * The laptop's dictation history: one JSON line per dictation with what
+ * Parakeet heard, the text before cleanup and what was typed. Private to the
+ * user (0600), on this machine only, the last [KEEP] kept. It holds dictation
+ * text, so it never leaves the laptop and is read only when Ethan asks.
+ */
+object History {
+    const val KEEP = 300
+
+    fun file() = File(System.getenv("XDG_STATE_HOME") ?: "${System.getProperty("user.home")}/.local/state", "flowtype/history.jsonl")
+
+    fun append(file: File, heard: String, local: String, typed: String, outcome: String, ms: Long) {
+        runCatching {
+            file.parentFile.mkdirs()
+            val line = JSONObject()
+                .put("at", java.time.Instant.now().toString())
+                .put("heard", heard).put("local", local).put("typed", typed)
+                .put("outcome", outcome).put("ms", ms)
+                .toString()
+            val lines = (if (file.exists()) file.readLines() else emptyList()) + line
+            val tmp = File(file.path + ".tmp")
+            tmp.writeText(lines.takeLast(KEEP).joinToString("\n", postfix = "\n"))
+            tmp.setReadable(false, false); tmp.setReadable(true, true)
+            tmp.setWritable(false, false); tmp.setWritable(true, true)
+            tmp.renameTo(file)
+        }.onFailure { Trace.warn("history_failed", "error" to it.javaClass.simpleName) }
     }
 }
