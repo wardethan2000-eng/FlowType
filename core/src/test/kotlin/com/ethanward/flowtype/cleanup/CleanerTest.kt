@@ -66,7 +66,7 @@ class CleanerTest {
     @Test
     fun aReplyIsStoppedOnItsFirstWords() {
         val fake = Fake(listOf("Sure", "Sure, here", "Sure, here is", "Sure, here is a plan")) { Streamed.Done(it, 1, 2, null, 0, 0) }
-        val r = Cleaner({ "key" }, provider = fake).clean(talk, AppStyle.MESSAGING, emptyList(), config, 3000)
+        val r = Cleaner({ "key" }, provider = fake).clean(talk, Styles.MESSAGING, emptyList(), config, 3000)
         assertEquals(Reason.ASSISTANT, (r as Cleaner.Result.Fallback).reason)
         assertEquals(3, fake.seen)
     }
@@ -74,23 +74,23 @@ class CleanerTest {
     @Test
     fun aFinishedAnswerIsTidied() {
         val fake = Fake(listOf("“So I think we’ll meet", "“So I think we’ll meet at the café tomorrow.”")) { Streamed.Done(it, 5, 9, null, 1000, 1200) }
-        val r = Cleaner({ "key" }, provider = fake).clean(talk, AppStyle.MESSAGING, emptyList(), config, 3000)
+        val r = Cleaner({ "key" }, provider = fake).clean(talk, Styles.MESSAGING, emptyList(), config, 3000)
         assertEquals(Cleaner.Result.Cleaned("So I think we'll meet at the café tomorrow.", 5, 9, 1000, 1200), r)
     }
 
     @Test
     fun aProviderFailureComesThrough() {
         val fake = Fake(emptyList()) { Streamed.Failed(Reason.RATE_LIMITED, -1, 40, null, 429) }
-        val r = Cleaner({ "key" }, provider = fake).clean(talk, AppStyle.MESSAGING, emptyList(), config, 3000)
+        val r = Cleaner({ "key" }, provider = fake).clean(talk, Styles.MESSAGING, emptyList(), config, 3000)
         assertEquals(Cleaner.Result.Fallback(Reason.RATE_LIMITED, 40, 429, -1), r)
     }
 
     @Test
     fun noKeyShortAndAlreadyCleanNeverCallTheProvider() {
         val fake = Fake(emptyList()) { Streamed.Done(it, 1, 2, null, 0, 0) }
-        assertEquals(Reason.NO_KEY, (Cleaner({ null }, provider = fake).clean(talk, AppStyle.MESSAGING, emptyList(), config, 3000) as Cleaner.Result.Fallback).reason)
-        assertEquals(Reason.SHORT, (Cleaner({ "key" }, provider = fake).clean("Sounds good.", AppStyle.MESSAGING, emptyList(), config, 3000) as Cleaner.Result.Fallback).reason)
-        assertEquals(Reason.CLEAN, (Cleaner({ "key" }, provider = fake).clean("I'll send it over tonight.", AppStyle.MESSAGING, emptyList(), config, 3000) as Cleaner.Result.Fallback).reason)
+        assertEquals(Reason.NO_KEY, (Cleaner({ null }, provider = fake).clean(talk, Styles.MESSAGING, emptyList(), config, 3000) as Cleaner.Result.Fallback).reason)
+        assertEquals(Reason.SHORT, (Cleaner({ "key" }, provider = fake).clean("Sounds good.", Styles.MESSAGING, emptyList(), config, 3000) as Cleaner.Result.Fallback).reason)
+        assertEquals(Reason.CLEAN, (Cleaner({ "key" }, provider = fake).clean("I'll send it over tonight.", Styles.MESSAGING, emptyList(), config, 3000) as Cleaner.Result.Fallback).reason)
         assertEquals(0, fake.calls)
     }
 }

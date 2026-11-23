@@ -43,7 +43,8 @@ dependencies {
     // scripts/fetch-sherpa-onnx.sh on the build box. Not committed.
     implementation(files("libs/sherpa-onnx.aar"))
 
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // The text pipeline shared with the desktop command (PLAN §7 Phase 5); brings okhttp.
+    implementation(project(":core"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")

@@ -8,11 +8,11 @@ import android.view.inputmethod.EditorInfo
  * (PLAN §4.5 part 3). Some fields get no cleanup at all.
  */
 object AppStyle {
-    const val MESSAGING = "messaging"
-    const val EMAIL = "email"
-    const val NOTES = "notes"
-    const val SEARCH = "search"
-    const val GENERAL = "general"
+    const val MESSAGING = Styles.MESSAGING
+    const val EMAIL = Styles.EMAIL
+    const val NOTES = Styles.NOTES
+    const val SEARCH = Styles.SEARCH
+    const val GENERAL = Styles.GENERAL
 
     private val MESSAGING_APPS = setOf(
         "com.google.android.apps.messaging", "com.samsung.android.messaging", "com.whatsapp",

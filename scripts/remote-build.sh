@@ -4,6 +4,7 @@
 #   scripts/remote-build.sh setup             one-time: JDK 17 + Android SDK on the box
 #   scripts/remote-build.sh apk               debug APK, copied back to out/flowtype-debug.apk
 #   scripts/remote-build.sh test [ARGS...]    JVM unit tests (ARGS go to gradle)
+#   scripts/remote-build.sh desktop           flowtype-clean jar, copied back to out/flowtype-clean.jar
 #   scripts/remote-build.sh install           adb install out/flowtype-debug.apk HERE, to the phone
 #   scripts/remote-build.sh run -- CMD...     any command, in the synced tree
 #   scripts/remote-build.sh fetch PATH...     copy paths from the box's tree back here
@@ -44,7 +45,7 @@ APK_LOCAL="out/flowtype-debug.apk"
 BUILD="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"
 
 usage() {
-  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 }
 
@@ -99,7 +100,16 @@ case "$mode" in
     ;;
   test)
     sync_up
-    remote bash -c 'scripts/fetch-sherpa-onnx.sh && ./gradlew --console=plain testDebugUnitTest "$@"' _ "$@"
+    remote bash -c 'scripts/fetch-sherpa-onnx.sh && ./gradlew --console=plain testDebugUnitTest :core:test :desktop:test "$@"' _ "$@"
+    ;;
+  desktop)
+    # The laptop's flowtype-clean (PLAN §7 Phase 5). Pure JVM: no AAR needed.
+    sync_up
+    remote ./gradlew --console=plain :desktop:fatJar
+    mkdir -p "$ROOT/out"
+    rsync -az "$HOST:$REMOTE/desktop/build/libs/flowtype-clean.jar" "$ROOT/out/flowtype-clean.jar"
+    echo "remote-build: jar copied back (install it with scripts/install-desktop.sh):"
+    (cd "$ROOT" && ls -l out/flowtype-clean.jar)
     ;;
   install)
     # adb is light; it runs here, where the phone is (USB, or `adb pair` /

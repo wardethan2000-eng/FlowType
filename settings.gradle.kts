@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "flowtype"
-include(":app")
+include(":app", ":core", ":desktop")

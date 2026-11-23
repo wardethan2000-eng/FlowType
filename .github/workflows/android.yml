@@ -65,7 +65,7 @@ jobs:
           fi
 
       - name: Unit tests
-        run: ./gradlew --console=plain testDebugUnitTest
+        run: ./gradlew --console=plain testDebugUnitTest :core:test :desktop:test
 
       - name: Debug APK
         run: ./gradlew --console=plain assembleDebug

@@ -12,9 +12,9 @@ import com.ethanward.flowtype.dictionary.SnippetTokens
  * Calls block; run them off the main thread. Never logs text or the key.
  */
 class Cleaner(
-    /** The saved key, or null ([ApiKeyStore.load]). */
+    /** The saved key, or null (on the phone, ApiKeyStore.load). */
     private val key: () -> String?,
-    private val usage: UsageStore? = null,
+    private val usage: UsageSink? = null,
     private val provider: CleanupProvider = OpenAiResponses(),
 ) {
 
@@ -56,7 +56,7 @@ class Cleaner(
 
     /** The Test key button: a tiny real cleanup with a generous deadline. */
     fun test(key: String, config: CleanupConfig): Result =
-        request(CleanupCall(key, config, "um so this is a quick test of my key", emptyList(), AppStyle.GENERAL, null), 15_000)
+        request(CleanupCall(key, config, "um so this is a quick test of my key", emptyList(), Styles.GENERAL, null), 15_000)
 
     private fun request(call: CleanupCall, deadlineMs: Long): Result {
         val input = call.transcript

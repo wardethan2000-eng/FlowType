@@ -1,20 +1,24 @@
 package com.ethanward.flowtype
 
-import android.util.Log
-
 /**
- * The only logging in the app. Callers pass numbers, enums and package names:
+ * The only logging in Flowtype. Callers pass numbers, enums and package names:
  * never field text, transcripts or the API key (AGENTS.md).
+ *
+ * Where lines go is the platform's: the phone sets [sink] to logcat at start-up
+ * (FlowtypeApp), the desktop command to stderr. Until then they're dropped.
  */
 object Trace {
-    private const val TAG = "Flowtype"
+    enum class Level { INFO, WARN }
+
+    @Volatile
+    var sink: (Level, String) -> Unit = { _, _ -> }
 
     fun event(name: String, vararg fields: Pair<String, Any?>) {
-        Log.i(TAG, format(name, *fields))
+        sink(Level.INFO, format(name, *fields))
     }
 
     fun warn(name: String, vararg fields: Pair<String, Any?>) {
-        Log.w(TAG, format(name, *fields))
+        sink(Level.WARN, format(name, *fields))
     }
 
     fun format(name: String, vararg fields: Pair<String, Any?>): String =

@@ -35,7 +35,7 @@ object AlreadyClean {
     /** True when [text] can be typed as it is in a field of this [style]. */
     fun check(text: String, style: String): Boolean {
         // Search wants no final punctuation and no capital: the model's job.
-        if (style == AppStyle.SEARCH) return false
+        if (style == Styles.SEARCH) return false
         val words = Guards.words(text)
         if (words.isEmpty() || words.size > MAX_WORDS) return false
         if (text.any { it.isDigit() }) return false
@@ -60,7 +60,7 @@ object AlreadyClean {
      */
     fun finish(text: String, style: String): String {
         val t = text.trim()
-        if (style != AppStyle.MESSAGING || !t.endsWith('.') || t.endsWith("..")) return t
+        if (style != Styles.MESSAGING || !t.endsWith('.') || t.endsWith("..")) return t
         val body = t.dropLast(1)
         return if (body.any { it in ".?!\n" }) t else body
     }

@@ -21,8 +21,14 @@ app/src/main/kotlin/com/ethanward/flowtype/     the app
   cleanup/   prompt, streamed Responses API call, guards, Keystore-held key
   ui/        every screen: home, AI cleanup, dictionary, models, developer tools
 app/src/test/                                   JVM unit tests
+core/src/main/kotlin/com/ethanward/flowtype/    the text pipeline with no Android in it, shared with
+                                                the desktop (PLAN §7 Phase 5): Trace, spoken commands, the
+                                                "okay" fix, dictionary/* (not the store), cleanup/* (not the
+                                                Keystore, settings, usage store or AppStyle); its tests in core/src/test
+desktop/                                        flowtype-clean, voxtype's post-process command on the laptop
 app/libs/sherpa-onnx.aar                        fetched on the box, never committed
 scripts/remote-build.sh                         every build, run on the build box
+scripts/install-desktop.sh                      puts out/flowtype-clean.jar in ~/.local/bin (copies only)
 scripts/builder/                                scripts that run ON the box
 private/                                        the plan (private repo, ignored here)
 ```
