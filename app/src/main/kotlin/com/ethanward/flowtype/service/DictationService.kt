@@ -37,10 +37,10 @@ import com.ethanward.flowtype.audio.OtherAudio
 import com.ethanward.flowtype.audio.QuietGate
 import com.ethanward.flowtype.audio.SignalStats
 import com.ethanward.flowtype.audio.Wav
-import com.ethanward.flowtype.cleanup.AlreadyClean
 import com.ethanward.flowtype.cleanup.AppStyle
 import com.ethanward.flowtype.cleanup.Cleaner
 import com.ethanward.flowtype.cleanup.CleanupSetup
+import com.ethanward.flowtype.cleanup.TextingStyle
 import com.ethanward.flowtype.cleanup.UsageStore
 import com.ethanward.flowtype.dictionary.Corrections
 import com.ethanward.flowtype.dictionary.DictionaryPass
@@ -489,7 +489,7 @@ class DictationService : AccessibilityService() {
         setState(MicButton.State.RECORDING)
         if (gate != null && !gate.isOpen) button?.setWaiting(true)
         preloadModel(warm = true)
-        if (cleanupStyle(field) != null) net.execute { CleanupSetup.current(this).takeIf { it.ready }?.provider()?.prewarm() }
+        if (cleanupOn() && AppStyle.forField(field.packageName, field.inputType, field.imeOptions) != null) net.execute { CleanupSetup.current(this).takeIf { it.ready }?.provider()?.prewarm() }
         return true
     }
 
@@ -582,10 +582,13 @@ class DictationService : AccessibilityService() {
                 Trace.warn("decode_failed", "error" to it.javaClass.simpleName)
                 ""
             }
-            val style = cleanupStyle(field)
+            val fieldStyle = AppStyle.forField(field.packageName, field.inputType, field.imeOptions, prefs.appStyles())
+            val style = fieldStyle.takeIf { cleanupOn() }
             if (local.isBlank() || style == null) {
-                val typed = pass.expand(local)
-                main.post { finish(typed, typed, if (style == null) "off" else "empty", startedSession, field, stoppedAt) }
+                // No cleanup, but a text still gets the punctuation picked for texts.
+                val raw = pass.expand(local)
+                val typed = pass.expand(texting(local, fieldStyle))
+                main.post { finish(raw, typed, if (style == null) "off" else "empty", startedSession, field, stoppedAt) }
                 return@execute
             }
             net.execute {
@@ -601,11 +604,12 @@ class DictationService : AccessibilityService() {
         }
     }
 
-    /** Cleanup is used when it's on, its provider is set up, and the field suits it. */
-    private fun cleanupStyle(field: EditorInfo): String? {
-        if (!prefs.cleanupEnabled || !CleanupSetup.looksReady(this, prefs)) return null
-        return AppStyle.forField(field.packageName, field.inputType, field.imeOptions)
-    }
+    /** Cleanup is used when it's on and its provider is set up (and the field suits it: [AppStyle.forField]). */
+    private fun cleanupOn(): Boolean = prefs.cleanupEnabled && CleanupSetup.looksReady(this, prefs)
+
+    /** In a messaging app, [text] punctuated the way the user picked for texts. */
+    private fun texting(text: String, style: String?): String =
+        if (style == AppStyle.MESSAGING && text.isNotBlank()) TextingStyle.byId(prefs.textingStyle).apply(text) else text
 
     /** net thread. The cleaned text, or [local] if cleanup fails in any way. */
     private fun cleanup(local: String, style: String, pass: DictionaryPass, words: List<String>, before: String?): Pair<String, String> {
@@ -623,7 +627,7 @@ class DictationService : AccessibilityService() {
                 )
                 if (prefs.keyProblem != null) prefs.keyProblem = null
                 // Pass 2: the model may have re-cased a dictionary word.
-                return pass.apply(result.text).text to "cleaned"
+                return texting(pass.apply(result.text).text, style) to "cleaned"
             }
             is Cleaner.Result.Fallback -> {
                 Trace.event(
@@ -636,11 +640,7 @@ class DictationService : AccessibilityService() {
                     prefs.keyProblem = result.reason.name
                     if (first) main.post { toast(keyProblemMessage(result.reason, setup.preset.label)) }
                 }
-                val typed = when (result.reason) {
-                    Cleaner.Reason.SHORT, Cleaner.Reason.CLEAN -> AlreadyClean.finish(local, style)
-                    else -> local
-                }
-                return typed to result.reason.name
+                return texting(local, style) to result.reason.name
             }
         }
     }

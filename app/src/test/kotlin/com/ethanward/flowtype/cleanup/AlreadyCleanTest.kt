@@ -1,6 +1,5 @@
 package com.ethanward.flowtype.cleanup
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -50,14 +49,5 @@ class AlreadyCleanTest {
     fun cueWordsInsideOtherWordsDontCount() {
         // "none" and "someone" contain "no" and "one"; "likely" contains "like".
         assertTrue(AlreadyClean.check("Someone likely has none left.", AppStyle.GENERAL))
-    }
-
-    @Test
-    fun messagingDropsTheFinalPeriodOfOneSentence() {
-        assertEquals("Sounds good", AlreadyClean.finish("Sounds good.", AppStyle.MESSAGING))
-        assertEquals("On my way. See you soon.", AlreadyClean.finish("On my way. See you soon.", AppStyle.MESSAGING))
-        assertEquals("Really?", AlreadyClean.finish("Really?", AppStyle.MESSAGING))
-        assertEquals("Wait...", AlreadyClean.finish("Wait...", AppStyle.MESSAGING))
-        assertEquals("Sounds good.", AlreadyClean.finish("Sounds good.", AppStyle.EMAIL))
     }
 }

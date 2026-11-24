@@ -24,6 +24,7 @@ import com.ethanward.flowtype.asr.Downloads
 import com.ethanward.flowtype.asr.ModelStore
 import com.ethanward.flowtype.cleanup.CleanupSetup
 import com.ethanward.flowtype.cleanup.Prices
+import com.ethanward.flowtype.cleanup.TextingStyle
 import com.ethanward.flowtype.cleanup.UsageStore
 import com.ethanward.flowtype.dictionary.DictionaryStore
 import com.ethanward.flowtype.service.DictationService
@@ -41,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var dictionarySummary: TextView
     private lateinit var modelSummary: TextView
     private lateinit var cleanupSummary: TextView
+    private lateinit var styleSummary: TextView
     private lateinit var historySummary: TextView
     private lateinit var buttonSummary: TextView
     private lateinit var tryCard: MaterialCardView
@@ -58,6 +60,8 @@ class MainActivity : AppCompatActivity() {
             section("Settings")
             card(padded = false) {
                 cleanupSummary = navRow("AI cleanup") { open(CleanupSettingsActivity::class.java) }
+                divider()
+                styleSummary = navRow("Punctuation") { open(WritingStyleActivity::class.java) }
                 divider()
                 dictionarySummary = navRow("Dictionary") { open(DictionaryActivity::class.java) }
                 divider()
@@ -114,6 +118,8 @@ class MainActivity : AppCompatActivity() {
             1 -> "Your dictations, kept 1 day on this phone"
             else -> "Your dictations, kept $d days on this phone"
         }
+        styleSummary.text = "Texts: " + TextingStyle.byId(prefs.textingStyle).label.replaceFirstChar { it.lowercaseChar() } +
+            prefs.appStyles().size.let { n -> if (n == 0) "" else " · $n app" + (if (n == 1) "" else "s") + " set by you" }
         val setup = CleanupSetup.current(this, prefs)
         val week = UsageStore(this).summary().week
         cleanupSummary.text = when {
