@@ -88,7 +88,7 @@ class DesktopTest {
     fun keyProblemsNotifyTheDesktop() {
         server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":{"code":"invalid_api_key"}}"""))
         val notices = ArrayList<Pair<String, String>>()
-        val d = Desktop(custom(), dict, { "bad-key" }) { title, body -> notices += title to body }
+        val d = Desktop(custom(), dict, { "bad-key" }, notify = { title, body -> notices += title to body })
         val out = d.run(longDictation)
         assertEquals("um so I think we should uh print the DecalForge sign on the Bambu tomorrow morning", out)
         assertEquals("KEY_REJECTED", d.outcome)
@@ -100,7 +100,7 @@ class DesktopTest {
     fun nonKeyFailuresDoNotNotify() {
         server.enqueue(MockResponse().setResponseCode(500))
         val notices = ArrayList<Pair<String, String>>()
-        val d = Desktop(custom(), dict, { "k" }) { title, body -> notices += title to body }
+        val d = Desktop(custom(), dict, { "k" }, notify = { title, body -> notices += title to body })
         d.run(longDictation)
         assertEquals(0, notices.size)
     }
@@ -112,5 +112,20 @@ class DesktopTest {
         assertEquals(0, server.requestCount)
         val noAi = Settings(style = "messaging", textingStyle = "no_last_period", cleanup = false)
         assertEquals("Running late. Be there at five", Desktop(noAi, dict, { null }).run("Running late. Be there at five."))
+    }
+
+    @Test
+    fun autoStyleFollowsActiveWindow() {
+        val discord = ActiveWindow("discord", "discord", "#general - Discord")
+        val d = Desktop(custom(), dict, { null }, activeWindow = { discord })
+        assertEquals("Running late. See you soon", d.run("Running late. See you soon."))
+        assertEquals("messaging", d.resolvedStyle)
+
+        val gmail = ActiveWindow("firefox", "Navigator", "Inbox - Gmail — Mozilla Firefox")
+        server.enqueue(sse("I think we should print the DecalForge sign on the Bambu tomorrow morning."))
+        val mail = Desktop(custom(), dict, { null }, activeWindow = { gmail })
+        mail.run(longDictation)
+        assertEquals("email", mail.resolvedStyle)
+        assertTrue(server.takeRequest().body.readUtf8().contains("Style: email"))
     }
 }
