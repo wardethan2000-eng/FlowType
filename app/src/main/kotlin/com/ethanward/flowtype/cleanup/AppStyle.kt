@@ -29,8 +29,25 @@ object AppStyle {
         "md.obsidian", "notion.id", "com.google.android.apps.docs.editors.docs",
     )
 
-    /** The style for a field, or null when the field should get no cleanup. */
-    fun forField(packageName: String?, inputType: Int, imeOptions: Int): String? {
+    /** The styles an app can be given by hand, with what the settings call them. */
+    val PICKABLE = listOf(MESSAGING to "Texting", EMAIL to "Email", NOTES to "Notes", GENERAL to "Everything else")
+
+    fun label(style: String): String = PICKABLE.firstOrNull { it.first == style }?.second ?: "Everything else"
+
+    /** The style Flowtype gives an app when the user hasn't picked one. */
+    fun builtIn(packageName: String?): String = when (packageName) {
+        in MESSAGING_APPS -> MESSAGING
+        in EMAIL_APPS -> EMAIL
+        in NOTES_APPS -> NOTES
+        else -> GENERAL
+    }
+
+    /**
+     * The style for a field, or null when the field should get no cleanup.
+     * [picked] is the user's own choice per app (package → style), which wins
+     * over the built-in lists; the field's own type still comes first.
+     */
+    fun forField(packageName: String?, inputType: Int, imeOptions: Int, picked: Map<String, String> = emptyMap()): String? {
         val klass = inputType and InputType.TYPE_MASK_CLASS
         val variation = inputType and InputType.TYPE_MASK_VARIATION
         if (klass != InputType.TYPE_CLASS_TEXT && klass != InputType.TYPE_NULL) return null
@@ -45,11 +62,9 @@ object AppStyle {
             }
         }
         if (imeOptions and EditorInfo.IME_MASK_ACTION == EditorInfo.IME_ACTION_SEARCH) return SEARCH
-        return when (packageName) {
-            in MESSAGING_APPS -> MESSAGING
-            in EMAIL_APPS -> EMAIL
-            in NOTES_APPS -> NOTES
-            else -> if (klass == InputType.TYPE_CLASS_TEXT && variation == InputType.TYPE_TEXT_VARIATION_EMAIL_SUBJECT) EMAIL else GENERAL
-        }
+        picked[packageName]?.let { style -> if (PICKABLE.any { it.first == style }) return style }
+        val style = builtIn(packageName)
+        val subject = klass == InputType.TYPE_CLASS_TEXT && variation == InputType.TYPE_TEXT_VARIATION_EMAIL_SUBJECT
+        return if (style == GENERAL && subject) EMAIL else style
     }
 }

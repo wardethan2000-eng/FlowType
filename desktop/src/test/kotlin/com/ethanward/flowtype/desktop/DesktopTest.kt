@@ -52,7 +52,7 @@ class DesktopTest {
 
     @Test
     fun withoutAKeyTheLocalPassIsTyped() {
-        val out = Desktop(Settings(), dict) { null }.run("Print it on the bamboo. New line. Thanks okay.")
+        val out = Desktop(Settings(), dict, { null }).run("Print it on the bamboo. New line. Thanks okay.")
         assertEquals("Print it on the Bambu.\nThanks.", out)
         assertEquals(0, server.requestCount)
     }
@@ -61,7 +61,7 @@ class DesktopTest {
     fun cleanedTextGetsTheDictionaryAgain() {
         // The model wrote "Decalforge"; the second pass puts the saved spelling back.
         server.enqueue(sse("I think we should print the Decalforge sign on the Bambu tomorrow morning."))
-        val out = Desktop(custom(), dict) { null }.run(longDictation)
+        val out = Desktop(custom(), dict, { null }).run(longDictation)
         assertEquals("I think we should print the DecalForge sign on the Bambu tomorrow morning.", out)
         val body = server.takeRequest().body.readUtf8()
         assertTrue(body.contains("test-model"))
@@ -71,13 +71,46 @@ class DesktopTest {
     @Test
     fun aFailedCallTypesTheLocalText() {
         server.enqueue(MockResponse().setResponseCode(500))
-        val out = Desktop(custom(), dict) { null }.run(longDictation)
+        val out = Desktop(custom(), dict, { null }).run(longDictation)
         assertEquals("um so I think we should uh print the DecalForge sign on the Bambu tomorrow morning", out)
     }
 
     @Test
     fun shortDictationsSkipTheCall() {
-        assertEquals("On my way.", Desktop(custom(), dict) { null }.run("On my way."))
+        var keyLookups = 0
+        assertEquals("On my way.", Desktop(custom(), dict, { keyLookups++; null }).run("On my way."))
+        assertEquals("I'll send it over tonight.", Desktop(custom(), dict, { keyLookups++; null }).run("I'll send it over tonight."))
+        assertEquals(0, keyLookups)
         assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun keyProblemsNotifyTheDesktop() {
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":{"code":"invalid_api_key"}}"""))
+        val notices = ArrayList<Pair<String, String>>()
+        val d = Desktop(custom(), dict, { "bad-key" }) { title, body -> notices += title to body }
+        val out = d.run(longDictation)
+        assertEquals("um so I think we should uh print the DecalForge sign on the Bambu tomorrow morning", out)
+        assertEquals("KEY_REJECTED", d.outcome)
+        assertEquals(1, notices.size)
+        assertTrue(notices[0].second.contains("didn't accept your key"))
+    }
+
+    @Test
+    fun nonKeyFailuresDoNotNotify() {
+        server.enqueue(MockResponse().setResponseCode(500))
+        val notices = ArrayList<Pair<String, String>>()
+        val d = Desktop(custom(), dict, { "k" }) { title, body -> notices += title to body }
+        d.run(longDictation)
+        assertEquals(0, notices.size)
+    }
+
+    @Test
+    fun messagingStyleAppliesTextingPunctuation() {
+        val s = custom().copy(style = "messaging", textingStyle = "no_last_period")
+        assertEquals("Running late. See you soon", Desktop(s, dict, { null }).run("Running late. See you soon."))
+        assertEquals(0, server.requestCount)
+        val noAi = Settings(style = "messaging", textingStyle = "no_last_period", cleanup = false)
+        assertEquals("Running late. Be there at five", Desktop(noAi, dict, { null }).run("Running late. Be there at five."))
     }
 }

@@ -15,12 +15,18 @@ object SpokenCommands {
     private const val W = "(?<![\\p{L}\\p{N}])"
     private const val E = "(?![\\p{L}\\p{N}])"
 
+    /**
+     * Each spoken mark replaces the punctuation Parakeet put before it, so
+     * "Sure. Exclamation point." is "Sure!", not "Sure.!" (history, 2026-11).
+     */
+    private const val P = "[.,;:!?]*\\s*"
+
     private val marks = listOf(
-        Regex("\\s*${W}question mark$E[.,?!]*", RegexOption.IGNORE_CASE) to "?",
-        Regex("\\s*${W}exclamation (?:point|mark)$E[.,?!]*", RegexOption.IGNORE_CASE) to "!",
-        Regex("\\s*${W}comma$E[.,]*", RegexOption.IGNORE_CASE) to ",",
-        Regex("\\s*${W}semicolon$E[.,]*", RegexOption.IGNORE_CASE) to ";",
-        Regex("\\s*${W}colon$E[.,]*", RegexOption.IGNORE_CASE) to ":",
+        Regex("$P${W}question mark$E[.,?!]*", RegexOption.IGNORE_CASE) to "?",
+        Regex("$P${W}exclamation (?:point|mark)$E[.,?!]*", RegexOption.IGNORE_CASE) to "!",
+        Regex("$P${W}comma$E[.,]*", RegexOption.IGNORE_CASE) to ",",
+        Regex("$P${W}semicolon$E[.,]*", RegexOption.IGNORE_CASE) to ";",
+        Regex("$P${W}colon$E[.,]*", RegexOption.IGNORE_CASE) to ":",
     )
 
     /** "new line"/"new paragraph" with punctuation or an edge on at least one side. */

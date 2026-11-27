@@ -53,15 +53,4 @@ object AlreadyClean {
         if (sentences.size < 2) return false
         return listOf(sentences.first(), sentences.last()).any { s -> s.all { it in STRAY } }
     }
-
-    /**
-     * The phone's text, finished as the model would for this style: a single
-     * short sentence in a messaging app loses its final period.
-     */
-    fun finish(text: String, style: String): String {
-        val t = text.trim()
-        if (style != Styles.MESSAGING || !t.endsWith('.') || t.endsWith("..")) return t
-        val body = t.dropLast(1)
-        return if (body.any { it in ".?!\n" }) t else body
-    }
 }

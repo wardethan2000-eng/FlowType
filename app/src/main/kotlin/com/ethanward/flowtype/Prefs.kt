@@ -9,6 +9,7 @@ import com.ethanward.flowtype.cleanup.Providers
 class Prefs(context: Context) {
     companion object {
         const val TEST_PHRASE_MS = 30 * 60 * 1000L
+        private const val APP_STYLE = "app_style_"
     }
 
     private val prefs = context.getSharedPreferences("flowtype", Context.MODE_PRIVATE)
@@ -124,4 +125,20 @@ class Prefs(context: Context) {
     var pauseOtherAudio: Boolean
         get() = prefs.getBoolean("pause_other_audio", true)
         set(value) = prefs.edit().putBoolean("pause_other_audio", value).apply()
+
+    /** How texts are punctuated: a [com.ethanward.flowtype.cleanup.TextingStyle] id. */
+    var textingStyle: String
+        get() = prefs.getString("texting_style", null) ?: com.ethanward.flowtype.cleanup.TextingStyle.DEFAULT.id
+        set(value) = prefs.edit().putString("texting_style", value).apply()
+
+    /** The kind of app the user picked for each app (package → an AppStyle); apps left alone aren't in it. */
+    fun appStyles(): Map<String, String> = prefs.all.entries
+        .filter { it.key.startsWith(APP_STYLE) && it.value is String }
+        .associate { it.key.removePrefix(APP_STYLE) to it.value as String }
+
+    /** null puts the app back on Flowtype's own choice. */
+    fun setAppStyle(packageName: String, style: String?) {
+        val key = APP_STYLE + packageName
+        prefs.edit().apply { if (style == null) remove(key) else putString(key, style) }.apply()
+    }
 }

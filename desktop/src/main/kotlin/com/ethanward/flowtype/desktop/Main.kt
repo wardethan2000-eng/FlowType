@@ -3,12 +3,12 @@ package com.ethanward.flowtype.desktop
 import com.ethanward.flowtype.Trace
 import com.ethanward.flowtype.asr.SpokenCommands
 import com.ethanward.flowtype.asr.dropGluedOkay
-import com.ethanward.flowtype.cleanup.AlreadyClean
 import com.ethanward.flowtype.cleanup.Cleaner
 import com.ethanward.flowtype.cleanup.CleanupConfig
 import com.ethanward.flowtype.cleanup.Protocol
 import com.ethanward.flowtype.cleanup.Providers
 import com.ethanward.flowtype.cleanup.Styles
+import com.ethanward.flowtype.cleanup.TextingStyle
 import com.ethanward.flowtype.dictionary.Dictionary
 import com.ethanward.flowtype.dictionary.DictionaryPass
 import org.json.JSONObject
@@ -32,9 +32,9 @@ fun main(args: Array<String>) {
     val dir = File(System.getenv("FLOWTYPE_CONFIG_DIR") ?: "${System.getProperty("user.home")}/.config/flowtype")
     val settings = Settings.load(File(dir, "desktop.json"))
     val raw = System.`in`.readBytes().toString(Charsets.UTF_8).trim()
-    val noAi = "--no-ai" in args || !settings.cleanup
+    val effective = if ("--no-ai" in args) settings.copy(cleanup = false) else settings
     val started = System.currentTimeMillis()
-    val desktop = Desktop(settings, Desktop.loadDictionary(File(dir, "dictionary.json"))) { id -> if (noAi) null else Desktop.key(id) }
+    val desktop = Desktop(effective, Desktop.loadDictionary(File(dir, "dictionary.json")), Desktop::key, Desktop::notify)
     val out = runCatching { desktop.run(raw) }.getOrElse {
         Trace.warn("desktop_failed", "error" to it.javaClass.simpleName)
         desktop.outcome = "error"
@@ -58,6 +58,7 @@ data class Settings(
     /** "Your own server": its address, as typed on the phone. */
     val server: String? = null,
     val style: String = Styles.GENERAL,
+    val textingStyle: String = TextingStyle.DEFAULT.id,
     val deadlineMs: Long = 3000,
     val soundsLike: Boolean = true,
     /** False: the local pass only, no AI call. */
@@ -81,6 +82,7 @@ data class Settings(
                 model = j.optString("model").takeIf { it.isNotEmpty() },
                 server = j.optString("server").takeIf { it.isNotEmpty() },
                 style = j.optString("style", d.style),
+                textingStyle = j.optString("textingStyle", d.textingStyle),
                 deadlineMs = j.optLong("deadlineMs", d.deadlineMs),
                 soundsLike = j.optBoolean("soundsLike", d.soundsLike),
                 cleanup = j.optBoolean("cleanup", d.cleanup),
@@ -90,16 +92,21 @@ data class Settings(
     }
 }
 
-/** The phone's order (DictationService): okay fix → spoken commands → dictionary → cleanup → dictionary again → snippets. */
+/** The phone's order (DictationService): okay fix → spoken commands → dictionary → cleanup → dictionary again → texting style → snippets. */
 class Desktop(
     private val settings: Settings,
     private val dictionary: Dictionary,
     /** The key for a provider id, or null for none. */
     private val key: (String) -> String?,
+    /** Surface key/billing failures to the desktop so cleanup never fails silently. */
+    private val notify: (String, String) -> Unit = { _, _ -> },
 ) {
     /** After [run]: the text before cleanup, and what cleanup did ("cleaned", a fallback reason, "off"). */
     var local: String = ""
     var outcome: String = "off"
+
+    private fun texting(text: String): String =
+        if (settings.style == Styles.MESSAGING && text.isNotBlank()) TextingStyle.byId(settings.textingStyle).apply(text) else text
 
     fun run(raw: String): String {
         val started = System.nanoTime()
@@ -107,6 +114,10 @@ class Desktop(
         val local = pass.apply(SpokenCommands.apply(dropGluedOkay(raw))).text
         this.local = local
         if (local.isBlank()) return pass.expand(local)
+        if (!settings.cleanup) {
+            outcome = "off"
+            return pass.expand(texting(local))
+        }
 
         val preset = Providers.byId(settings.provider)
         val baseUrl = Providers.baseUrl(preset, settings.server)
@@ -114,12 +125,11 @@ class Desktop(
         else CleanupConfig.of(preset, settings.model ?: preset.suggestedModel.orEmpty())
         if (baseUrl == null || config.model.isEmpty()) {
             Trace.event("cleanup", "outcome" to "not_set_up", "provider" to preset.id)
-            return pass.expand(local)
+            return pass.expand(texting(local))
         }
-        val k = key(preset.id) ?: if (preset.keyOptional) "" else null
         val style = settings.style
         val words = dictionary.words + dictionary.replacements.map { it.to }.filter { t -> t.any(Char::isUpperCase) }
-        val result = Cleaner({ k }, null, Providers.provider(preset, baseUrl))
+        val result = Cleaner({ key(preset.id) ?: if (preset.keyOptional) "" else null }, null, Providers.provider(preset, baseUrl))
             .clean(local, style, words, config, settings.deadlineMs, null)
         outcome = when (result) {
             is Cleaner.Result.Cleaned -> "cleaned"
@@ -133,17 +143,17 @@ class Desktop(
                     "charsIn" to local.length, "charsOut" to result.text.length,
                 )
                 // Pass 2: the model may have re-cased a dictionary word.
-                pass.apply(result.text).text
+                texting(pass.apply(result.text).text)
             }
             is Cleaner.Result.Fallback -> {
                 Trace.event(
                     "cleanup", "outcome" to result.reason, "model" to config.id, "style" to style,
                     "totalMs" to result.totalMs, "http" to result.http, "charsIn" to local.length,
                 )
-                when (result.reason) {
-                    Cleaner.Reason.SHORT, Cleaner.Reason.CLEAN -> AlreadyClean.finish(local, style)
-                    else -> local
+                if (result.reason.keyProblem) {
+                    notify("Flowtype AI cleanup failed", keyProblemMessage(result.reason, preset.label))
                 }
+                texting(local)
             }
         }
         Trace.event("desktop", "ms" to (System.nanoTime() - started) / 1_000_000)
@@ -151,6 +161,24 @@ class Desktop(
     }
 
     companion object {
+        fun keyProblemMessage(reason: Cleaner.Reason, provider: String) = when (reason) {
+            Cleaner.Reason.KEY_REJECTED -> "$provider didn't accept your key, so this was typed without AI cleanup"
+            Cleaner.Reason.NO_CREDIT -> "Your $provider account is out of credit, so this was typed without AI cleanup"
+            else -> "Your key can't use the cleanup model, so this was typed without AI cleanup"
+        }
+
+        fun notify(title: String, body: String) {
+            runCatching {
+                val p = ProcessBuilder(
+                    "notify-send", "-a", "Flowtype", "-u", "normal",
+                    "-h", "string:x-canonical-private-synchronous:flowtype-key",
+                    title, body,
+                ).redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start()
+                if (!p.waitFor(1, TimeUnit.SECONDS)) p.destroyForcibly()
+            }
+        }
         fun loadDictionary(file: File): Dictionary {
             if (!file.exists()) return Dictionary()
             return runCatching { Dictionary.fromJson(JSONObject(file.readText())) }.getOrElse {

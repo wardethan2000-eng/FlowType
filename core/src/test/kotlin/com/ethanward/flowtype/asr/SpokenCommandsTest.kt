@@ -12,6 +12,15 @@ class SpokenCommandsTest {
     }
 
     @Test
+    fun aSpokenMarkReplacesTheFullStopBeforeIt() {
+        assertEquals("Sure!", SpokenCommands.apply("Sure. Exclamation point."))
+        assertEquals("Sure!", SpokenCommands.apply("Sure! Exclamation mark!"))
+        assertEquals("Are you coming?", SpokenCommands.apply("Are you coming. Question mark."))
+        assertEquals("Thanks! See you soon.", SpokenCommands.apply("Thanks. Exclamation point. See you soon."))
+        assertEquals("Hi, Sam.", SpokenCommands.apply("Hi. Comma. Sam."))
+    }
+
+    @Test
     fun lineBreaksThatStandApart() {
         assertEquals("Shopping list.\nEggs.\nMilk.", SpokenCommands.apply("Shopping list. New line. Eggs. New line. Milk."))
         assertEquals("Dear Sarah,\n\nThanks for the update.", SpokenCommands.apply("Dear Sarah, new paragraph. Thanks for the update."))

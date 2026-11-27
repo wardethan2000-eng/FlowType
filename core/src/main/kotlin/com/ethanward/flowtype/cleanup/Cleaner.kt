@@ -44,13 +44,13 @@ class Cleaner(
         deadlineMs: Long,
         beforeCursor: String? = null,
     ): Result {
-        val key = key() ?: return Result.Fallback(Reason.NO_KEY)
         // "sounds good", "on my way": already right, and instant without the network.
         // Snippets are typed as saved: only the words around them count here.
         val spoken = SnippetTokens.strip(input)
         if (Guards.contentWords(spoken).size <= SHORT_WORDS) return Result.Fallback(Reason.SHORT)
         // Short and plain: the phone's text is already the answer, a second sooner.
         if (AlreadyClean.check(spoken, style)) return Result.Fallback(Reason.CLEAN)
+        val key = key() ?: return Result.Fallback(Reason.NO_KEY)
         return request(CleanupCall(key, config, input, dictionary, style, beforeCursor), deadlineMs)
     }
 

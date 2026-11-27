@@ -6,7 +6,7 @@
     <!-- One tap to Battery → Unrestricted, so One UI doesn't put the service to sleep. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-    <!-- App names in History: see apps with a launcher icon. -->
+    <!-- App names in History and in Punctuation: see apps with a launcher icon. -->
     <queries>
         <package android:name="com.google.android.keep" />
         <intent>
@@ -59,6 +59,11 @@
         <activity
             android:name=".ui.ButtonSettingsActivity"
             android:exported="false" />
+
+        <activity
+            android:name=".ui.WritingStyleActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.DeveloperActivity"
